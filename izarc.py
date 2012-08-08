@@ -5,9 +5,9 @@
 #
 
 import argparse
-import cStringIO
 import os.path
 import time
+import pprint as pp
 import subprocess as sp
 
 VERSION = '1'
@@ -124,27 +124,38 @@ class kstat():
         self._file = os.path.join(self.KSTATBASE, module, name)
         self._kstat = dict()
         lines = open(self._file).readlines()
+        # Parse common kstat data
         (self._kid, self._type, self._flags, self._ndata, self._data_size,
             self._crtime, self._snaptime) = [int(i, 0) for i in lines[0].split()]
+        # Parse the rest of kstat data
         if self._type == self.KSTAT_TYPE_RAW:
             raise NotImplementedError(self._type)
         elif self._type == self.KSTAT_TYPE_NAMED:
             self._init_named(lines)
+        elif self._type == self.KSTAT_TYPE_INTR:
+            raise NotImplementedError(self._type)
+        elif self._type == self.KSTAT_TYPE_IO:
+            raise NotImplementedError(self._type)
+        elif self._type == self.KSTAT_TYPE_TIMER:
+            raise NotImplementedError(self._type)
         else:
             raise NotImplementedError(self._type)
 
     def _init_named(self, lines):
         for line in lines[2:]:
-            name, dtype, value = line.split()
-            if dtype == self.KSTAT_DATA_CHAR:
+            name, data, value = line.split()
+            data = int(data)
+            if data == self.KSTAT_DATA_CHAR:
                 pass
-            if dtype == self.KSTAT_DATA_UINT64:
-                self._kstat[kname] = Integer(kvalue)
+            elif data == self.KSTAT_DATA_UINT64:
+                self._kstat[name] = int(value, 0)
             else:
                 pass
 
     def __str__(self):
-        return str(self.__dict__)
+        text = 'kid {self._kid}\n'.format(self=self)
+        text = pp.pformat(self._kstat)
+        return text
 
 
 class arcstats():
