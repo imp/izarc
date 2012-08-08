@@ -15,7 +15,6 @@ VERSION = '1'
 MODPARAMPREF = '/sys/module/zfs/parameters'
 ZFSMODPARAMS = ['/sbin/modinfo', '-F', 'parm', 'zfs']
 ARCSTATSPATH = '/proc/spl/kstat/zfs/arcstats'
-ZILSTATSPATH = '/proc/spl/kstat/zfs/zil'
 
 ARCSUMMARY = '''
 ARC Size
@@ -88,10 +87,6 @@ def humanize_dict(d):
     return res
 
 
-def get_arcstats():
-    return file(ARCSTATSPATH).read()
-
-
 def zfsparams():
     cmd = sp.Popen(ZFSMODPARAMS, stdout=sp.PIPE)
     paramlist = cmd.communicate()[0].splitlines()
@@ -158,11 +153,15 @@ class kstat():
         return text
 
 
-class arcstats():
-    def __init__(self, text=None):
-        self._kstat = dict()
+class arcstats(kstat):
+    def __init__(self):
+        kstat.__init__(self, 'zfs', 'arcstats')
+        #self._kstat = dict()
         self._arcstats = dict()
-        if text:
+        for name in self._kstat:
+            self._arcstats[name] = Integer(self._kstat[name])
+            
+        if False:
             lines = text.splitlines()
             n0, n1, n2, n3, n4, n5, tstamp = lines[0].split()
             self._kstat['tstamp'] = int(tstamp)
@@ -173,8 +172,7 @@ class arcstats():
 
     def __sub__(self, other):
         diff = arcstats()
-        for item in self._kstat:
-            diff._kstat[item] = self._kstat[item] - other._kstat[item]
+        diff._snaptime = self._snaptime - other._snaptime
         for item in self._arcstats:
             diff._arcstats[item] = Integer(self._arcstats[item] - other._arcstats[item])
         return diff
@@ -203,7 +201,7 @@ class arcstats():
         return result
 
     def compute(self):
-        delta = self._kstat['tstamp'] / 1000000000
+        delta = self._snaptime / 1000000000
         raw = self._arcstats.copy()
         raw['hps'] = self._arcstats['hits'] / delta
         raw['mps'] = self._arcstats['misses'] / delta
@@ -244,13 +242,13 @@ def data(obj):
 def cycle(interval, count):
     step = 1 if count else 0
     count = count if count else 1
-    cur = arcstats(get_arcstats())
+    cur = arcstats()
     time.sleep(1)
     lines = 0
     while count:
         count -= step
         prev = cur
-        cur = arcstats(get_arcstats())
+        cur = arcstats()
         delta = cur - prev
         if lines % 20 == 0:
             headers()
@@ -262,13 +260,13 @@ def cycle(interval, count):
 
 def execute(args):
     if args.debug:
-        print arcstats(get_arcstats()).debug()
-        as1 = arcstats(get_arcstats())
+        print arcstats().debug()
+        as1 = arcstats()
         time.sleep(1)
-        as2 = arcstats(get_arcstats())
+        as2 = arcstats()
         print (as2 - as1)
     elif args.summary:
-        print arcstats(get_arcstats()).summary()
+        print arcstats().summary()
     elif args.parm:
         print zfsparams()
     elif args.zil:
