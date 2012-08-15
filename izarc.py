@@ -279,8 +279,8 @@ def execute(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Report various ZFS ARC statistics',
-        version=VERSION)
+        description='Report various ZFS ARC statistics')
+    parser.add_argument('-v', '--version', action='version', version=VERSION)
     parser.add_argument('-d', '--debug',
         help='help debug this tool', action='store_true')
     parser.add_argument('-p', '--parm',
