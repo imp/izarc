@@ -12,6 +12,7 @@ import subprocess as sp
 
 VERSION = '1'
 
+NANOSEC = 1000000000
 MODPARAMPREF = '/sys/module/zfs/parameters'
 ZFSMODPARAMS = ['/sbin/modinfo', '-F', 'parm', 'zfs']
 ARCSTATSPATH = '/proc/spl/kstat/zfs/arcstats'
@@ -54,15 +55,18 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'pdhps': 'datah/s', 'pdmps': 'datam/s',
     'pmdhps': 'metah/s', 'pmdmps': 'metam/s',
     'c': 'deltac', 'p': 'deltap',
+    'cps': 'commit/s', 'wps': 'wrcomm/s',
     }
 
-OUT_HEADER = '{total:^16}{demand:^32}{prefetch:^32}'
+ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}'
 OUT_TOTAL = '{hps:>8}{mps:>8}'
 OUT_DEMAND = '{ddhps:>8}{ddmps:>8}{dmdhps:>8}{dmdmps:>8}'
 OUT_PREFETCH = '{pdhps:>8}{pdmps:>8}{pmdhps:>8}{pmdmps:>8}'
 OUT_ARC = '{c!s:>8}{p!s:>8}'
-OUT_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
+ARC_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
 
+ZIL_HEADER = '{total:^16}'
+ZIL_FORMAT = '{cps:>8}{wps:>8}'
 
 def humanize(number):
     number = int(number)
@@ -115,9 +119,15 @@ class kstat():
     KSTAT_DATA_CHAR = 0
     KSTAT_DATA_UINT64 = 4
 
-    def __init__(self, module, name):
-        self._file = os.path.join(self.KSTATBASE, module, name)
+    def __init__(self, module=None, name=None):
         self._kstat = dict()
+        if module and name:
+            self._file = os.path.join(self.KSTATBASE, module, name)
+            self._init_kstat() 
+        else:
+            self._file = ''
+
+    def _init_kstat(self):
         lines = open(self._file).readlines()
         # Parse common kstat data
         (self._kid, self._type, self._flags, self._ndata, self._data_size,
@@ -146,6 +156,13 @@ class kstat():
                 self._kstat[name] = int(value, 0)
             else:
                 pass
+
+    def __sub__(self, other):
+        diff = self.__class__()
+        diff._snaptime = self._snaptime - other._snaptime
+        for item in self._kstat:
+            diff._kstat[item] = Integer(self._kstat[item] - other._kstat[item])
+        return diff
 
     def __str__(self):
         text = 'kid {self._kid}\n'.format(self=self)
@@ -201,7 +218,7 @@ class arcstats(kstat):
         return result
 
     def compute(self):
-        delta = self._snaptime / 1000000000
+        delta = self._snaptime / NANOSEC
         raw = self._arcstats.copy()
         raw['hps'] = self._arcstats['hits'] / delta
         raw['mps'] = self._arcstats['misses'] / delta
@@ -215,6 +232,19 @@ class arcstats(kstat):
         raw['pmdmps'] = self._arcstats['prefetch_metadata_misses'] / delta
         return raw
 
+    def headers(self):
+        header = '\n'
+        groups = dict(total='  TOTAL', demand='DEMAND', prefetch='PREFETCH')
+        header += ARC_HEADER.format(**groups)
+        header += '\n'
+        header += ARC_FORMAT.format(**METRIC_NAMES)
+        return header
+
+    def data(self):
+        raw = self.compute()
+        #print raw
+        return ARC_FORMAT.format(**raw)
+
 
 class zil(kstat):
     def __init__(self):
@@ -223,37 +253,45 @@ class zil(kstat):
     def summary(self):
         return self.summary()
 
+    def compute(self):
+        delta = self._snaptime / NANOSEC
+        raw = self._kstat.copy()
+        raw['cps'] = self._kstat['zil_commit_count'] / delta
+        raw['wps'] = self._kstat['zil_commit_writer_count'] / delta
+        return raw
 
-def headers():
-    header = '\n'
-    groups = dict(total='  TOTAL', demand='DEMAND', prefetch='PREFETCH')
-    header += OUT_HEADER.format(**groups)
-    header += '\n'
-    header += OUT_FORMAT.format(**METRIC_NAMES)
-    print header
+    def headers(self):
+        header = '\n'
+        groups = dict(total='  TOTAL', demand='DEMAND', prefetch='PREFETCH')
+        header += ZIL_HEADER.format(**groups)
+        header += '\n'
+        header += ZIL_FORMAT.format(**METRIC_NAMES)
+        return header
+
+    def data(self):
+        raw = self.compute()
+        #print raw
+        return ZIL_FORMAT.format(**raw)
 
 
-def data(obj):
-    raw = obj.compute()
-    #print raw
-    print OUT_FORMAT.format(**raw)
 
 
-def cycle(interval, count):
+
+def cycle(stats, interval, count):
     step = 1 if count else 0
     count = count if count else 1
-    cur = arcstats()
+    cur = stats()
     time.sleep(1)
     lines = 0
     while count:
         count -= step
         prev = cur
-        cur = arcstats()
+        cur = stats()
         delta = cur - prev
         if lines % 20 == 0:
-            headers()
+            print delta.headers()
         lines += 1
-        data(delta)
+        print delta.data()
         if count:
             time.sleep(interval)
 
@@ -271,8 +309,9 @@ def execute(args):
         print zfsparams()
     elif args.zil:
         print zil()
+        cycle(zil, args.interval, args.count)
     else:
-        cycle(args.interval, args.count)
+        cycle(arcstats, args.interval, args.count)
 
     #pp.pprint(statsnap)
 
