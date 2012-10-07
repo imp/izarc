@@ -56,6 +56,10 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'pmdhps': 'metah/s', 'pmdmps': 'metam/s',
     'c': 'deltac', 'p': 'deltap',
     'cps': 'commit/s', 'wps': 'wrcomm/s',
+    'itxs': 'itx/s',
+    'imnbs': 'imsnb/s', 'imncs': 'imsnc/s',
+    'imsbs': 'imssb/s', 'imscs': 'imssc/s',
+    'incbs': 'incb/s', 'inccs': 'incc/s',
     }
 
 ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}'
@@ -65,8 +69,10 @@ OUT_PREFETCH = '{pdhps:>8}{pdmps:>8}{pmdhps:>8}{pmdmps:>8}'
 OUT_ARC = '{c!s:>8}{p!s:>8}'
 ARC_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
 
-ZIL_HEADER = '{total:^16}'
-ZIL_FORMAT = '{cps:>8}{wps:>8}'
+ZIL_HEADER = '{total:^20}{transactions:^40}'
+ZIL_COMMITS = '{cps:>10}{wps:>10}'
+ZIL_ITX = '{itxs:>8}{imnbs:>8}{imncs:>8}{imsbs:>8}{imscs:>8}{incbs:>8}{inccs:>8}'
+ZIL_FORMAT = ZIL_COMMITS + ZIL_ITX
 
 def humanize(number):
     number = int(number)
@@ -123,7 +129,7 @@ class kstat():
         self._kstat = dict()
         if module and name:
             self._file = os.path.join(self.KSTATBASE, module, name)
-            self._init_kstat() 
+            self._init_kstat()
         else:
             self._file = ''
 
@@ -177,7 +183,7 @@ class arcstats(kstat):
         self._arcstats = dict()
         for name in self._kstat:
             self._arcstats[name] = Integer(self._kstat[name])
-            
+
         if False:
             lines = text.splitlines()
             n0, n1, n2, n3, n4, n5, tstamp = lines[0].split()
@@ -258,11 +264,20 @@ class zil(kstat):
         raw = self._kstat.copy()
         raw['cps'] = self._kstat['zil_commit_count'] / delta
         raw['wps'] = self._kstat['zil_commit_writer_count'] / delta
+        raw['itxs'] = self._kstat['zil_itx_count'] / delta
+        raw['ibs'] = self._kstat['zil_itx_indirect_bytes'] / delta
+        raw['ics'] = self._kstat['zil_itx_indirect_count'] / delta
+        raw['imnbs'] = self._kstat['zil_itx_metaslab_normal_bytes'] / delta
+        raw['imncs'] = self._kstat['zil_itx_metaslab_normal_count'] / delta
+        raw['imsbs'] = self._kstat['zil_itx_metaslab_slog_bytes'] / delta
+        raw['imscs'] = self._kstat['zil_itx_metaslab_slog_count'] / delta
+        raw['incbs'] = self._kstat['zil_itx_needcopy_bytes'] / delta
+        raw['inccs'] = self._kstat['zil_itx_needcopy_count'] / delta
         return raw
 
     def headers(self):
         header = '\n'
-        groups = dict(total='  TOTAL', demand='DEMAND', prefetch='PREFETCH')
+        groups = dict(total='  TOTAL', transactions='TRANSACTIONS')
         header += ZIL_HEADER.format(**groups)
         header += '\n'
         header += ZIL_FORMAT.format(**METRIC_NAMES)
