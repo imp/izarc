@@ -62,7 +62,10 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'incbs': 'incb/s', 'inccs': 'incc/s',
     }
 
-ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}'
+HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
+    'arc': 'ARC', 'transactions': 'TRANSACTIONS'}
+
+ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^16}'
 OUT_TOTAL = '{hps:>8}{mps:>8}'
 OUT_DEMAND = '{ddhps:>8}{ddmps:>8}{dmdhps:>8}{dmdmps:>8}'
 OUT_PREFETCH = '{pdhps:>8}{pdmps:>8}{pmdhps:>8}{pmdmps:>8}'
@@ -240,8 +243,7 @@ class arcstats(kstat):
 
     def headers(self):
         header = '\n'
-        groups = dict(total='  TOTAL', demand='DEMAND', prefetch='PREFETCH')
-        header += ARC_HEADER.format(**groups)
+        header += ARC_HEADER.format(**HEADER_NAMES)
         header += '\n'
         header += ARC_FORMAT.format(**METRIC_NAMES)
         return header
@@ -277,8 +279,7 @@ class zil(kstat):
 
     def headers(self):
         header = '\n'
-        groups = dict(total='  TOTAL', transactions='TRANSACTIONS')
-        header += ZIL_HEADER.format(**groups)
+        header += ZIL_HEADER.format(**HEADER_NAMES)
         header += '\n'
         header += ZIL_FORMAT.format(**METRIC_NAMES)
         return header
