@@ -15,7 +15,6 @@ VERSION = '1'
 NANOSEC = 1000000000
 MODPARAMPREF = '/sys/module/zfs/parameters'
 ZFSMODPARAMS = ['/sbin/modinfo', '-F', 'parm', 'zfs']
-ARCSTATSPATH = '/proc/spl/kstat/zfs/arcstats'
 
 ARCSUMMARY = '''
 ARC Size
@@ -63,7 +62,7 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     }
 
 HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
-    'arc': 'ARC', 'transactions': 'TRANSACTIONS'}
+    'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS'}
 
 ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^16}'
 OUT_TOTAL = '{hps:>8}{mps:>8}'
@@ -290,9 +289,6 @@ class zil(kstat):
         return ZIL_FORMAT.format(**raw)
 
 
-
-
-
 def cycle(stats, interval, count):
     step = 1 if count else 0
     count = count if count else 1
@@ -324,7 +320,8 @@ def execute(args):
     elif args.parm:
         print zfsparams()
     elif args.zil:
-        print zil()
+        if args.debug:
+            print zil()
         cycle(zil, args.interval, args.count)
     else:
         cycle(arcstats, args.interval, args.count)
