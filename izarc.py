@@ -73,7 +73,7 @@ ARC_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
 
 ZIL_HEADER = '{total:^20}{transactions:^40}'
 ZIL_COMMITS = '{cps:>10}{wps:>10}'
-ZIL_ITX = '{itxs:>8}{imnbs:>8}{imncs:>8}{imsbs:>8}{imscs:>8}{incbs:>8}{inccs:>8}'
+ZIL_ITX = '{itxs:>8}{imnbs!s:>8}{imncs:>8}{imsbs!s:>8}{imscs:>8}{incbs!s:>8}{inccs:>8}'
 ZIL_FORMAT = ZIL_COMMITS + ZIL_ITX
 
 def humanize(number):
