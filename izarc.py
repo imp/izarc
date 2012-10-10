@@ -266,13 +266,13 @@ class zil(kstat):
         raw['cps'] = self._kstat['zil_commit_count'] / delta
         raw['wps'] = self._kstat['zil_commit_writer_count'] / delta
         raw['itxs'] = self._kstat['zil_itx_count'] / delta
-        raw['ibs'] = self._kstat['zil_itx_indirect_bytes'] / delta
+        raw['ibs'] = Integer(self._kstat['zil_itx_indirect_bytes'] / delta)
         raw['ics'] = self._kstat['zil_itx_indirect_count'] / delta
-        raw['imnbs'] = self._kstat['zil_itx_metaslab_normal_bytes'] / delta
+        raw['imnbs'] = Integer(self._kstat['zil_itx_metaslab_normal_bytes'] / delta)
         raw['imncs'] = self._kstat['zil_itx_metaslab_normal_count'] / delta
-        raw['imsbs'] = self._kstat['zil_itx_metaslab_slog_bytes'] / delta
+        raw['imsbs'] = Integer(self._kstat['zil_itx_metaslab_slog_bytes'] / delta)
         raw['imscs'] = self._kstat['zil_itx_metaslab_slog_count'] / delta
-        raw['incbs'] = self._kstat['zil_itx_needcopy_bytes'] / delta
+        raw['incbs'] = Integer(self._kstat['zil_itx_needcopy_bytes'] / delta)
         raw['inccs'] = self._kstat['zil_itx_needcopy_count'] / delta
         return raw
 
