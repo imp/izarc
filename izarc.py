@@ -59,10 +59,11 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'imnbs': 'imsnb/s', 'imncs': 'imsnc/s',
     'imsbs': 'imssb/s', 'imscs': 'imssc/s',
     'incbs': 'incb/s', 'inccs': 'incc/s',
+    'icbs': 'icb/s', 'iccs': 'icc/s',
     }
 
 HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
-    'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS'}
+    'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS', 'copy': 'DATA COPY'}
 
 ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^16}'
 OUT_TOTAL = '{hps:>8}{mps:>8}'
@@ -71,10 +72,11 @@ OUT_PREFETCH = '{pdhps:>8}{pdmps:>8}{pmdhps:>8}{pmdmps:>8}'
 OUT_ARC = '{c!s:>8}{p!s:>8}'
 ARC_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
 
-ZIL_HEADER = '{total:^20}{transactions:^40}'
+ZIL_HEADER = '{total:^20}{transactions:^40}{copy:^32}'
 ZIL_COMMITS = '{cps:>10}{wps:>10}'
-ZIL_ITX = '{itxs:>8}{imnbs!s:>8}{imncs:>8}{imsbs!s:>8}{imscs:>8}{incbs!s:>8}{inccs:>8}'
-ZIL_FORMAT = ZIL_COMMITS + ZIL_ITX
+ZIL_ITX = '{itxs:>8}{imnbs!s:>8}{imncs:>8}{imsbs!s:>8}{imscs:>8}'
+ZIL_COPIES = '{incbs!s:>8}{inccs:>8}{icbs!s:>8}{iccs:>8}'
+ZIL_FORMAT = ZIL_COMMITS + ZIL_ITX + ZIL_COPIES
 
 def humanize(number):
     number = int(number)
@@ -274,6 +276,8 @@ class zil(kstat):
         raw['imscs'] = self._kstat['zil_itx_metaslab_slog_count'] / delta
         raw['incbs'] = Integer(self._kstat['zil_itx_needcopy_bytes'] / delta)
         raw['inccs'] = self._kstat['zil_itx_needcopy_count'] / delta
+        raw['icbs'] = Integer(self._kstat['zil_itx_copied_bytes'] / delta)
+        raw['iccs'] = self._kstat['zil_itx_copied_count'] / delta
         return raw
 
     def headers(self):
