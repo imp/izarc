@@ -35,7 +35,6 @@ ARC Efficiency
 
 ARC Meta
 --------
-
 \tARC Metadata\t{arc_meta_used!s}
 
 '''
