@@ -182,7 +182,6 @@ class kstat():
 class arcstats(kstat):
     def __init__(self):
         kstat.__init__(self, 'zfs', 'arcstats')
-        #self._kstat = dict()
         self._arcstats = dict()
         for name in self._kstat:
             self._arcstats[name] = Integer(self._kstat[name])
@@ -194,7 +193,6 @@ class arcstats(kstat):
             for line in lines[2:]:
                 name, unused, value = line.split()
                 self._arcstats[name] = Integer(value)
-                #print 'Processed', name, value
 
     def __sub__(self, other):
         diff = arcstats()
@@ -250,7 +248,6 @@ class arcstats(kstat):
 
     def data(self):
         raw = self.compute()
-        #print raw
         return ARC_FORMAT.format(**raw)
 
 
@@ -288,7 +285,6 @@ class zil(kstat):
 
     def data(self):
         raw = self.compute()
-        #print raw
         return ZIL_FORMAT.format(**raw)
 
 
@@ -329,8 +325,6 @@ def execute(args):
     else:
         cycle(arcstats, args.interval, args.count)
 
-    #pp.pprint(statsnap)
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -350,7 +344,6 @@ def main():
         help='number of probes to run', type=int, nargs='?', default=0)
 
     args = parser.parse_args()
-    #print args
     execute(args)
 
 
