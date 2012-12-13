@@ -124,6 +124,8 @@ class kstat():
     KSTAT_TYPE_INTR = 2
     KSTAT_TYPE_IO = 3
     KSTAT_TYPE_TIMER = 4
+    KSTAT_TYPE_TXG = 5
+
     # kstat data types
     KSTAT_DATA_CHAR = 0
     KSTAT_DATA_UINT64 = 4
@@ -151,6 +153,8 @@ class kstat():
         elif self._type == self.KSTAT_TYPE_IO:
             raise NotImplementedError(self._type)
         elif self._type == self.KSTAT_TYPE_TIMER:
+            raise NotImplementedError(self._type)
+        elif self._type == self.KSTAT_TYPE_TXG:
             raise NotImplementedError(self._type)
         else:
             raise NotImplementedError(self._type)
