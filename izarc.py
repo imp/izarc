@@ -111,7 +111,7 @@ def zfsparams():
     return out
 
 
-class Integer(int):
+class Integer(long):
     def __str__(self):
         return humanize(self.numerator)
 
