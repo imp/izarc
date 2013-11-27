@@ -26,12 +26,24 @@ ARC Size
 
 ARC Size Breakdown
 ------------------
-\tMRU Size\t{p!s}
-\tMFU Size\t{mfu!s}
+\tMRU Size               \t\t{p!s}
+\tMFU Size               \t\t{mfu!s}
+\tAnonymous Size         \t\t{anon_size!s}
+\tCurrent MRU Size       \t\t{mru_size!s}
+\tCurrent Ghost MRU Size\t\t{mru_ghost_size!s}
+\tCurrent MFU Size       \t\t{mfu_size!s}
+\tCurrent Ghost MFU Size\t\t{mfu_ghost_size!s}
 
 ARC Efficiency
 --------------
 \tHit ratio\t{ratio:.2%}
+
+ARC Hits Breakdown
+------------------
+\tMRU Hits      \t\t{mru_hits_ratio:.2%}
+\tMFU Hits      \t\t{mfu_hits_ratio:.2%}
+\tMRU Ghost Hits\t\t{mru_ghost_hits_ratio:.2%}
+\tMFU Ghost Hits\t\t{mfu_ghost_hits_ratio:.2%}
 
 ARC Meta
 --------
@@ -222,6 +234,10 @@ class arcstats(kstat):
         l2_misses = float(self._arcstats['l2_misses'])
         stats['ratio'] = hits / (hits + misses)
         stats['mfu'] = Integer(stats['c'] - stats['p'])
+        stats['mru_hits_ratio'] = float(self._arcstats['mru_hits']) / hits
+        stats['mfu_hits_ratio'] = float(self._arcstats['mfu_hits']) / hits
+        stats['mru_ghost_hits_ratio'] = float(self._arcstats['mru_ghost_hits']) / hits
+        stats['mfu_ghost_hits_ratio'] = float(self._arcstats['mfu_ghost_hits']) / hits
         result = ARCSUMMARY.format(**stats)
         if self._arcstats.get('l2_size'):
             stats['l2_ratio'] = l2_hits / (l2_hits + l2_misses)
