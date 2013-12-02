@@ -10,7 +10,7 @@ import time
 import pprint as pp
 import subprocess as sp
 
-VERSION = '2'
+VERSION = '3'
 
 NANOSEC = 1000000000
 MODPARAMPREF = '/sys/module/zfs/parameters'
