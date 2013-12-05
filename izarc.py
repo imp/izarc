@@ -71,6 +71,7 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'imsbs': 'imssb/s', 'imscs': 'imssc/s',
     'incbs': 'incb/s', 'inccs': 'incc/s',
     'icbs': 'icb/s', 'iccs': 'icc/s',
+    'anons': 'dltsize', 'adevc': 'devict/s', 'amevc': 'mevict/s',
     'mrus': 'dltsize', 'mruh': 'hits/s', 'mrudevc': 'devict/s', 'mrumevc': 'mevict/s',
     'mfus': 'dltsize', 'mfuh': 'hits/s', 'mfudevc': 'devict/s', 'mfumevc': 'mevict/s',
     'gmrus': 'dltsize', 'gmruh': 'hits/s', 'gmrudevc': 'devict/s', 'gmrumevc': 'mevict/s',
@@ -82,7 +83,7 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     }
 
 HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
-    'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS', 'copy': 'DATA COPY',
+    'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS', 'copy': 'DATA COPY', 'anon': 'ANON',
     'mru': 'MRU', 'mfu': 'MFU', 'gmru': 'GHOST MRU', 'gmfu': 'GHOST MFU'}
 
 ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^16}'
@@ -92,12 +93,13 @@ OUT_PREFETCH = '{pdhps:>8}{pdmps:>8}{pmdhps:>8}{pmdmps:>8}'
 OUT_ARC = '{c!s:>8}{p!s:>8}'
 ARC_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
 
-EXTENDEDARC_HEADER = '{mru:^36}{mfu:^36}{gmru:^36}{gmfu:^36}'
+EXTENDEDARC_HEADER = '{anon:^28}{mru:^36}{mfu:^36}{gmru:^36}{gmfu:^36}'
+OUT_ANON = '{anons!s:>8}{adevc:>10}{amevc:>10}'
 OUT_MRU = '{mrus!s:>8}{mruh:>8}{mrudevc:>10}{mrumevc:>10}'
 OUT_MFU = '{mfus!s:>8}{mfuh:>8}{mfudevc:>10}{mfumevc:>10}'
 OUT_GMRU = '{gmrus!s:>8}{gmruh:>8}{gmrudevc:>10}{gmrumevc:>10}'
 OUT_GMFU = '{gmfus!s:>8}{gmfuh:>8}{gmfudevc:>10}{gmfumevc:>10}'
-EXTENDEDARC_FORMAT = OUT_MRU + OUT_MFU + OUT_GMRU + OUT_GMFU
+EXTENDEDARC_FORMAT = OUT_ANON + OUT_MRU + OUT_MFU + OUT_GMRU + OUT_GMFU
 
 L2ARC_SIZE = '{l2size!s:>14}{l2hdrsize!s:>14}'
 L2ARC_IO = '{l2hps:>8}{l2mps:>8}{l2read:>8}{l2write:>8}{l2sent:>8}'
@@ -297,6 +299,9 @@ class extendarc(arcstats):
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._arcstats.copy()
+        raw['anons'] = self._arcstats['anon_size']
+        raw['adevc'] = self._arcstats['anon_evict_data'] / delta
+        raw['amevc'] = self._arcstats['anon_evict_metadata'] / delta
         raw['mrus'] = self._arcstats['mru_size']
         raw['mruh'] = self._arcstats['mru_hits'] / delta
         raw['mrudevc'] = self._arcstats['mru_evict_data'] / delta
