@@ -373,19 +373,54 @@ class zil(kstat):
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._kstat.copy()
+        # Number of times a ZIL commit (e.g. fsync) has been requested.
         raw['cps'] = self._kstat['zil_commit_count'] / delta
+        # Number of times the ZIL has been flushed to stable storage.
+        # This is less than zil_commit_count when commits are "merged".
         raw['wps'] = self._kstat['zil_commit_writer_count'] / delta
+        # Number of transactions (reads, writes, renames, etc.) that have been commited.
         raw['itxs'] = self._kstat['zil_itx_count'] / delta
+        # Writes are handled in three different ways:
+        #
+        # WR_INDIRECT:
+        #    In this mode, if we need to commit the write later, then the block
+        #    is immediately written into the file system (using dmu_sync),
+        #    and a pointer to the block is put into the log record.
+        #    When the txg commits the block is linked in.
+        #    This saves additionally writing the data into the log record.
+        #    There are a few requirements for this to occur:
+        #  - write is greater than zfs/zvol_immediate_write_sz
+        #  - not using slogs (as slogs are assumed to always be faster
+        #    than writing into the main pool)
+        #  - the write occupies only one block
+        # WR_COPIED:
+        #    If we know we'll immediately be committing the
+        #    transaction (FSYNC or FDSYNC), the we allocate a larger
+        #    log record here for the data and copy the data in.
+        # WR_NEED_COPY:
+        #    Otherwise we don't allocate a buffer, and *if* we need to
+        #    flush the write later then a buffer is allocated and
+        #    we retrieve the data using the dmu.
+
+        # Note that "bytes" accumulates the length of the transactions
+        # (i.e. data), not the actual log record sizes.
         raw['ibs'] = Integer(self._kstat['zil_itx_indirect_bytes'] / delta)
         raw['ics'] = self._kstat['zil_itx_indirect_count'] / delta
-        raw['imnbs'] = Integer(self._kstat['zil_itx_metaslab_normal_bytes'] / delta)
-        raw['imncs'] = self._kstat['zil_itx_metaslab_normal_count'] / delta
-        raw['imsbs'] = Integer(self._kstat['zil_itx_metaslab_slog_bytes'] / delta)
-        raw['imscs'] = self._kstat['zil_itx_metaslab_slog_count'] / delta
         raw['incbs'] = Integer(self._kstat['zil_itx_needcopy_bytes'] / delta)
         raw['inccs'] = self._kstat['zil_itx_needcopy_count'] / delta
         raw['icbs'] = Integer(self._kstat['zil_itx_copied_bytes'] / delta)
         raw['iccs'] = self._kstat['zil_itx_copied_count'] / delta
+        # Transactions which have been allocated to the "normal"
+        # (i.e. not slog) storage pool. Note that "bytes" accumulate
+        # the actual log record sizes - which do not include the actual
+        # data in case of indirect writes.
+        raw['imnbs'] = Integer(self._kstat['zil_itx_metaslab_normal_bytes'] / delta)
+        raw['imncs'] = self._kstat['zil_itx_metaslab_normal_count'] / delta
+        # Transactions which have been allocated to the "slog" storage pool.
+        # If there are no separate log devices, this is the same as the
+        # "normal" pool.
+        raw['imsbs'] = Integer(self._kstat['zil_itx_metaslab_slog_bytes'] / delta)
+        raw['imscs'] = self._kstat['zil_itx_metaslab_slog_count'] / delta
         return raw
 
     def headers(self):
