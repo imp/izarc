@@ -237,6 +237,22 @@ class prefetch(kstat):
     def __init__(self):
         super(prefetch, self).__init__('zfs', 'zfetchstats')
 
+    @classmethod
+    def acronym(cls):
+        out = '\n----- Prefetch Acronym -----\n'
+        out += 'hit/s      - Hits per second\n'
+        out += 'miss/s     - Misses per second\n'
+        out += 'chit/s     - Colinear hits per second\n'
+        out += 'cmiss/s    - Colinear misses per second\n'
+        out += 'shit/s     - Stride hits per second\n'
+        out += 'smiss/s    - Stride misses per second\n'
+        out += 'rsuc/s     - Reclaim successes per second\n'
+        out += 'rfail/s    - Reclaim failures per second\n'
+        out += 'sbogus/s   - Bogus streams per second\n'
+        out += 'sreset/s   - Streams resets per second\n'
+        out += 'snoreset/s - Streams noresets per second\n'
+        return out
+
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._kstat.copy()
@@ -518,6 +534,7 @@ def execute(args):
     elif args.extend:
         cycle(extendarc, args.interval, args.count)
     elif args.prefetch:
+        print prefetch.acronym()
         cycle(prefetch, args.interval, args.count)
     else:
         cycle(arcstats, args.interval, args.count)
