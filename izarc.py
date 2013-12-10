@@ -65,21 +65,30 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'pdhps': 'datah/s', 'pdmps': 'datam/s',
     'pmdhps': 'metah/s', 'pmdmps': 'metam/s',
     'c': 'deltac', 'p': 'deltap',
+    # zil metrics
     'cps': 'commit/s', 'wps': 'wrcomm/s',
     'itxs': 'itx/s',
     'imnbs': 'imsnb/s', 'imncs': 'imsnc/s',
     'imsbs': 'imssb/s', 'imscs': 'imssc/s',
     'incbs': 'incb/s', 'inccs': 'incc/s',
     'icbs': 'icb/s', 'iccs': 'icc/s',
+    # extend arc metrics
     'anons': 'dltsize', 'adevc': 'devict/s', 'amevc': 'mevict/s',
     'mrus': 'dltsize', 'mruh': 'hits/s', 'mrudevc': 'devict/s', 'mrumevc': 'mevict/s',
     'mfus': 'dltsize', 'mfuh': 'hits/s', 'mfudevc': 'devict/s', 'mfumevc': 'mevict/s',
     'gmrus': 'dltsize', 'gmruh': 'hits/s', 'gmrudevc': 'devict/s', 'gmrumevc': 'mevict/s',
     'gmfus': 'dltsize', 'gmfuh': 'hits/s', 'gmfudevc': 'devict/s', 'gmfumevc': 'mevict/s',
+    # l2arc metrics
     'l2hps': 'hit/s', 'l2mps': 'miss/s',
     'l2size': 'dltsize', 'l2hdrsize': 'dlthdrsize',
     'l2read': 'read/s', 'l2write': 'write/s', 'l2sent': 'sent/s',
     'l2whm': 'writehdrm/s', 'l2fow': 'freeonwrite/s',
+    # prefetch metrics
+    'pfhps': 'hit/s', 'pfmps': 'miss/s',
+    'pfchps': 'chit/s', 'pfcmps': 'cmiss/s',
+    'pfshps': 'shit/s', 'pfsmps': 'smiss/s',
+    'pfrs': 'rsuc/s', 'pfrf': 'rfail/s', 'pfbs': 'sbogus/s',
+    'pfsr': 'sreset/s', 'pfsnr': 'snoreset/s',
     }
 
 HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
@@ -111,6 +120,11 @@ ZIL_COMMITS = '{cps:>10}{wps:>10}'
 ZIL_ITX = '{itxs:>8}{imnbs!s:>8}{imncs:>8}{imsbs!s:>8}{imscs:>8}'
 ZIL_COPIES = '{incbs!s:>8}{inccs:>8}{icbs!s:>8}{iccs:>8}'
 ZIL_FORMAT = ZIL_COMMITS + ZIL_ITX + ZIL_COPIES
+
+PREFETCH_TOTAL = '{pfhps:>8}{pfmps:>8}'
+PREFETCH_INTERN = '{pfchps:>8}{pfcmps:>8}{pfshps:>8}{pfsmps:>8}'
+PREFETCH_MISC = '{pfrs:>8}{pfrf:>8}{pfsr:>10}{pfsnr:>12}{pfbs:>10}'
+PREFETCH_FORMAT = PREFETCH_TOTAL + PREFETCH_INTERN + PREFETCH_MISC
 
 
 def humanize(number):
@@ -217,6 +231,36 @@ class kstat(object):
         text = 'kid {self._kid}\n'.format(self=self)
         text = pp.pformat(self._kstat)
         return text
+
+
+class prefetch(kstat):
+    def __init__(self):
+        super(prefetch, self).__init__('zfs', 'zfetchstats')
+
+    def compute(self):
+        delta = self._snaptime / NANOSEC
+        raw = self._kstat.copy()
+        raw['pfhps'] = self._kstat['hits'] / delta
+        raw['pfmps'] = self._kstat['misses'] / delta
+        raw['pfchps'] = self._kstat['colinear_hits'] / delta
+        raw['pfcmps'] = self._kstat['colinear_misses'] / delta
+        raw['pfshps'] = self._kstat['stride_hits'] / delta
+        raw['pfsmps'] = self._kstat['stride_misses'] / delta
+        raw['pfrs'] = self._kstat['reclaim_successes'] / delta
+        raw['pfrf'] = self._kstat['reclaim_failures'] / delta
+        raw['pfsr'] = self._kstat['streams_resets'] / delta
+        raw['pfsnr'] = self._kstat['streams_noresets'] / delta
+        raw['pfbs'] = self._kstat['bogus_streams'] / delta
+        return raw
+
+    def headers(self):
+        header = '\n'
+        header += PREFETCH_FORMAT.format(**METRIC_NAMES)
+        return header
+
+    def data(self):
+        raw = self.compute()
+        return PREFETCH_FORMAT.format(**raw)
 
 
 class arcstats(kstat):
@@ -473,6 +517,8 @@ def execute(args):
         cycle(l2arc, args.interval, args.count)
     elif args.extend:
         cycle(extendarc, args.interval, args.count)
+    elif args.prefetch:
+        cycle(prefetch, args.interval, args.count)
     else:
         cycle(arcstats, args.interval, args.count)
 
@@ -493,6 +539,8 @@ def main():
         help='print extended ARC statistics', action='store_true')
     parser.add_argument('-l', '--l2arc',
         help='print L2ARC statistics', action='store_true')
+    parser.add_argument('-f', '--prefetch',
+        help='print prefetch statistics', action='store_true')
     parser.add_argument('interval',
         help='seconds between probes', type=int, nargs='?', default=1)
     parser.add_argument('count',
