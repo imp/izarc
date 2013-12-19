@@ -73,11 +73,11 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'incbs': 'incb/s', 'inccs': 'incc/s',
     'icbs': 'icb/s', 'iccs': 'icc/s',
     # extend arc metrics
-    'anons': 'dltsize', 'adevc': 'devict/s', 'amevc': 'mevict/s',
-    'mrus': 'dltsize', 'mruh': 'hits/s', 'mrudevc': 'devict/s', 'mrumevc': 'mevict/s',
-    'mfus': 'dltsize', 'mfuh': 'hits/s', 'mfudevc': 'devict/s', 'mfumevc': 'mevict/s',
-    'gmrus': 'dltsize', 'gmruh': 'hits/s', 'gmrudevc': 'devict/s', 'gmrumevc': 'mevict/s',
-    'gmfus': 'dltsize', 'gmfuh': 'hits/s', 'gmfudevc': 'devict/s', 'gmfumevc': 'mevict/s',
+    'anons': 'dltsize', 'adevc': 'devict', 'amevc': 'mevict',
+    'mrus': 'dltsize', 'mruh': 'hits/s', 'mrudevc': 'devict', 'mrumevc': 'mevict',
+    'mfus': 'dltsize', 'mfuh': 'hits/s', 'mfudevc': 'devict', 'mfumevc': 'mevict',
+    'gmrus': 'dltsize', 'gmruh': 'hits/s', 'gmrudevc': 'devict', 'gmrumevc': 'mevict',
+    'gmfus': 'dltsize', 'gmfuh': 'hits/s', 'gmfudevc': 'devict', 'gmfumevc': 'mevict',
     # l2arc metrics
     'l2hps': 'hit/s', 'l2mps': 'miss/s',
     'l2size': 'dltsize', 'l2hdrsize': 'dlthdrsize',
@@ -360,24 +360,24 @@ class extendarc(arcstats):
         delta = self._snaptime / NANOSEC
         raw = self._arcstats.copy()
         raw['anons'] = self._arcstats['anon_size']
-        raw['adevc'] = self._arcstats['anon_evict_data'] / delta
-        raw['amevc'] = self._arcstats['anon_evict_metadata'] / delta
+        raw['adevc'] = self._arcstats['anon_evict_data']
+        raw['amevc'] = self._arcstats['anon_evict_metadata']
         raw['mrus'] = self._arcstats['mru_size']
         raw['mruh'] = self._arcstats['mru_hits'] / delta
-        raw['mrudevc'] = self._arcstats['mru_evict_data'] / delta
-        raw['mrumevc'] = self._arcstats['mru_evict_metadata'] / delta
+        raw['mrudevc'] = self._arcstats['mru_evict_data']
+        raw['mrumevc'] = self._arcstats['mru_evict_metadata']
         raw['mfus'] = self._arcstats['mfu_size']
         raw['mfuh'] = self._arcstats['mfu_hits'] / delta
-        raw['mfudevc'] = self._arcstats['mfu_evict_data'] / delta
-        raw['mfumevc'] = self._arcstats['mfu_evict_metadata'] / delta
+        raw['mfudevc'] = self._arcstats['mfu_evict_data']
+        raw['mfumevc'] = self._arcstats['mfu_evict_metadata']
         raw['gmrus'] = self._arcstats['mru_ghost_size']
         raw['gmruh'] = self._arcstats['mru_ghost_hits'] / delta
-        raw['gmrudevc'] = self._arcstats['mru_ghost_evict_data'] / delta
-        raw['gmrumevc'] = self._arcstats['mru_ghost_evict_metadata'] / delta
+        raw['gmrudevc'] = self._arcstats['mru_ghost_evict_data']
+        raw['gmrumevc'] = self._arcstats['mru_ghost_evict_metadata']
         raw['gmfus'] = self._arcstats['mfu_ghost_size']
         raw['gmfuh'] = self._arcstats['mfu_ghost_hits'] / delta
-        raw['gmfudevc'] = self._arcstats['mfu_ghost_evict_data'] / delta
-        raw['gmfumevc'] = self._arcstats['mfu_ghost_evict_metadata'] / delta
+        raw['gmfudevc'] = self._arcstats['mfu_ghost_evict_data']
+        raw['gmfumevc'] = self._arcstats['mfu_ghost_evict_metadata']
         return raw
 
     def headers(self):
