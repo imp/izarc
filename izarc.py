@@ -9,6 +9,7 @@ import os.path
 import time
 import pprint as pp
 import subprocess as sp
+from copy import deepcopy
 
 VERSION = '3'
 
@@ -71,6 +72,7 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'imnbs': 'imsnb/s', 'imncs': 'imsnc/s',
     'imsbs': 'imssb/s', 'imscs': 'imssc/s',
     'incbs': 'incb/s', 'inccs': 'incc/s',
+    'iibs': 'iib/s', 'iics': 'iic/s',
     'icbs': 'icb/s', 'iccs': 'icc/s',
     # extend arc metrics
     'anons': 'dltsize', 'adevc': 'devict', 'amevc': 'mevict',
@@ -81,8 +83,7 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     # l2arc metrics
     'l2hps': 'hit/s', 'l2mps': 'miss/s',
     'l2size': 'dltsize', 'l2hdrsize': 'dlthdrsize',
-    'l2read': 'read/s', 'l2write': 'write/s', 'l2sent': 'sent/s',
-    'l2whm': 'writehdrm/s', 'l2fow': 'freeonwrite/s',
+    'l2read': 'read/s', 'l2write': 'write/s',
     # prefetch metrics
     'pfhps': 'hit/s', 'pfmps': 'miss/s',
     'pfchps': 'chit/s', 'pfcmps': 'cmiss/s',
@@ -90,6 +91,7 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'pfrs': 'rsuc/s', 'pfrf': 'rfail/s', 'pfbs': 'sbogus/s',
     'pfsr': 'sreset/s', 'pfsnr': 'snoreset/s',
     }
+
 
 HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
     'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS', 'copy': 'DATA COPY', 'anon': 'ANON',
@@ -111,14 +113,13 @@ OUT_GMFU = '{gmfus!s:>8}{gmfuh:>8}{gmfudevc:>10}{gmfumevc:>10}'
 EXTENDEDARC_FORMAT = OUT_ANON + OUT_MRU + OUT_MFU + OUT_GMRU + OUT_GMFU
 
 L2ARC_SIZE = '{l2size!s:>14}{l2hdrsize!s:>14}'
-L2ARC_IO = '{l2hps:>8}{l2mps:>8}{l2read:>8}{l2write:>8}{l2sent:>8}'
-L2ARC_MISC = '{l2whm:>14}{l2fow:>14}'
-L2ARC_FORMAT = L2ARC_SIZE + L2ARC_IO + L2ARC_MISC
+L2ARC_IO = '{l2hps:>8}{l2mps:>8}{l2read:>8}{l2write:>8}'
+L2ARC_FORMAT = L2ARC_SIZE + L2ARC_IO
 
-ZIL_HEADER = '{total:^20}{transactions:^40}{copy:^32}'
+ZIL_HEADER = '{total:^20}{transactions:^40}{copy:^48}'
 ZIL_COMMITS = '{cps:>10}{wps:>10}'
 ZIL_ITX = '{itxs:>8}{imnbs!s:>8}{imncs:>8}{imsbs!s:>8}{imscs:>8}'
-ZIL_COPIES = '{incbs!s:>8}{inccs:>8}{icbs!s:>8}{iccs:>8}'
+ZIL_COPIES = '{iibs!s:>8}{iics:>8}{incbs!s:>8}{inccs:>8}{icbs!s:>8}{iccs:>8}'
 ZIL_FORMAT = ZIL_COMMITS + ZIL_ITX + ZIL_COPIES
 
 PREFETCH_TOTAL = '{pfhps:>8}{pfmps:>8}'
@@ -221,7 +222,9 @@ class kstat(object):
                 pass
 
     def __sub__(self, other):
-        diff = self.__class__()
+        if not isinstance(other, kstat):
+            return NotImplemented
+        diff = deepcopy(self)
         diff._snaptime = self._snaptime - other._snaptime
         for item in self._kstat:
             diff._kstat[item] = Integer(self._kstat[item] - other._kstat[item])
@@ -286,16 +289,23 @@ class arcstats(kstat):
         for name in self._kstat:
             self._arcstats[name] = Integer(self._kstat[name])
 
-        if False:
-            lines = text.splitlines()
-            n0, n1, n2, n3, n4, n5, tstamp = lines[0].split()
-            self._kstat['tstamp'] = int(tstamp)
-            for line in lines[2:]:
-                name, unused, value = line.split()
-                self._arcstats[name] = Integer(value)
+    @classmethod
+    def acronym(cls):
+        out = '\n----- Arcstats Acronym -----\n'
+        out += 'hit/s      - Hits per second\n'
+        out += 'miss/s     - Misses per second\n'
+        out += 'datah/s    - Data hits per second\n'
+        out += 'datam/s    - Data misses per second\n'
+        out += 'metah/s    - Metadata hits per second\n'
+        out += 'metam/s    - Metadata misses per second\n'
+        out += 'deltac     - Delta of target ARC size at given interval\n'
+        out += 'deltap     - Delta of target MRU size at given interval\n'
+        return out
 
     def __sub__(self, other):
-        diff = self.__class__()
+        if not isinstance(other, arcstats):
+            return NotImplemented
+        diff = deepcopy(self)
         diff._snaptime = self._snaptime - other._snaptime
         for item in self._arcstats:
             diff._arcstats[item] = Integer(self._arcstats[item] - other._arcstats[item])
@@ -306,9 +316,6 @@ class arcstats(kstat):
 
     def __repr__(self):
         return str(self._arcstats)
-
-    def debug(self):
-        return self._kstat
 
     def summary(self):
         stats = self._arcstats.copy()
@@ -356,6 +363,15 @@ class arcstats(kstat):
 
 
 class extendarc(arcstats):
+    @classmethod
+    def acronym(cls):
+        out = '\n----- Extended Arcstats Acronym -----\n'
+        out += 'hit/s      - Hits per second\n'
+        out += 'mevict     - Evictable metadata\n'
+        out += 'devict     - Evictable data\n'
+        out += 'dltsize    - Delta of size at given interval\n'
+        return out
+
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._arcstats.copy()
@@ -393,6 +409,17 @@ class extendarc(arcstats):
 
 
 class l2arc(arcstats):
+    @classmethod
+    def acronym(cls):
+        out = '\n----- L2ARC Acronym -----\n'
+        out += 'hit/s          - Hits per second\n'
+        out += 'miss/s         - Misses per second\n'
+        out += 'read/s         - Read bytes per second\n'
+        out += 'write/s        - Write bytes per second\n'
+        out += 'dltsize        - Delta of L2ARC size at given interval\n'
+        out += 'dlthdrsize     - Delta of L2ARC header size (ARC overhead) at given interval\n'
+        return out
+
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._arcstats.copy()
@@ -403,14 +430,6 @@ class l2arc(arcstats):
         raw['l2mps'] = self._arcstats['l2_misses'] / delta
         raw['l2read'] = self._arcstats['l2_read_bytes'] / delta
         raw['l2write'] = self._arcstats['l2_write_bytes'] / delta
-        raw['l2sent'] = self._arcstats['l2_writes_sent'] / delta
-        # This buffer misses out.  It may be in a stage
-        # of eviction.  Its ARC_L2_WRITING flag will be
-        # left set, denying reads to this buffer.
-        raw['l2whm'] = self._arcstats['l2_writes_hdr_miss'] / delta
-        # Free the arc data buffer.  If it is an l2arc write in progress,
-        # the buffer is placed on l2arc_free_on_write to be freed later.
-        raw['l2fow'] = self._arcstats['l2_free_on_write'] / delta
         return raw
 
     def headers(self):
@@ -427,8 +446,26 @@ class zil(kstat):
     def __init__(self):
         super(zil, self).__init__('zfs', 'zil')
 
-    def summary(self):
-        return self.summary()
+    @classmethod
+    def acronym(cls):
+        out = '\n----- ZIL Acronym -----\n'
+        out += 'commit/s   - Commit requests per second\n'
+        out += 'wrcomm/s   - Number of times the ZIL has been flushed to stable storage per second\n'
+        out += 'itx/s      - Number of transactions (reads, writes, renames, etc.) that have been commited per second\n'
+        out += '*** Transactions which have been allocated to the "normal" (i.e. not slog) storage pool ***\n'
+        out += 'imsnb/s    - Accumulates the actual log record sizes per second\n'
+        out += 'imsnc/s    - Writes counter per second\n'
+        out += '*** Transactions which have been allocated to the "slog" storage pool ***\n'
+        out += 'imssb/s    - Accumulates the actual log record sizes per second per second\n'
+        out += 'imssc/s    - Writes counter per second\n'
+        out += '*** Counters for three different ways of writes handling ***\n'
+        out += 'iib/s      - Accumulates the length of the indirect data, not the actual log record sizes per second\n'
+        out += 'iic/s      - Indirect data writes counter per second\n'
+        out += 'incb/s     - Accumulates the length of the needcopy data, not the actual log record sizes per second\n'
+        out += 'incc/s     - Needcopy data writes counter per second\n'
+        out += 'icb/s      - Accumulates the length of the copied data, not the actual log record sizes per second\n'
+        out += 'icc/s      - Copied data writes counter per second\n'
+        return out
 
     def compute(self):
         delta = self._snaptime / NANOSEC
@@ -464,8 +501,8 @@ class zil(kstat):
 
         # Note that "bytes" accumulates the length of the transactions
         # (i.e. data), not the actual log record sizes.
-        raw['ibs'] = Integer(self._kstat['zil_itx_indirect_bytes'] / delta)
-        raw['ics'] = self._kstat['zil_itx_indirect_count'] / delta
+        raw['iibs'] = Integer(self._kstat['zil_itx_indirect_bytes'] / delta)
+        raw['iics'] = self._kstat['zil_itx_indirect_count'] / delta
         raw['incbs'] = Integer(self._kstat['zil_itx_needcopy_bytes'] / delta)
         raw['inccs'] = self._kstat['zil_itx_needcopy_count'] / delta
         raw['icbs'] = Integer(self._kstat['zil_itx_copied_bytes'] / delta)
@@ -494,17 +531,20 @@ class zil(kstat):
         raw = self.compute()
         return ZIL_FORMAT.format(**raw)
 
-
-def cycle(stats, interval, count):
+def cycle(stats, interval, count, verbose, debug, **kwargs):
+    if verbose:
+        print stats.acronym()
     step = 1 if count else 0
     count = count if count else 1
-    cur = stats()
+    cur = stats(**kwargs)
+    if debug:
+        print cur
     time.sleep(1)
     lines = 0
     while count:
         count -= step
         prev = cur
-        cur = stats()
+        cur = stats(**kwargs)
         delta = cur - prev
         if lines % 20 == 0:
             print delta.headers()
@@ -513,31 +553,27 @@ def cycle(stats, interval, count):
         if count:
             time.sleep(interval)
 
-
 def execute(args):
-    if args.debug:
-        print arcstats().debug()
-        as1 = arcstats()
-        time.sleep(1)
-        as2 = arcstats()
-        print (as2 - as1)
-    elif args.summary:
+    if args.summary:
         print arcstats().summary()
     elif args.parm:
         print zfsparams()
     elif args.zil:
-        if args.debug:
-            print zil()
-        cycle(zil, args.interval, args.count)
+        cycle(zil, args.interval, args.count, args.verbose, args.debug)
     elif args.l2arc:
-        cycle(l2arc, args.interval, args.count)
+        cycle(l2arc, args.interval, args.count, args.verbose, args.debug)
     elif args.extend:
-        cycle(extendarc, args.interval, args.count)
+        cycle(extendarc, args.interval, args.count, args.verbose, args.debug)
     elif args.prefetch:
-        print prefetch.acronym()
-        cycle(prefetch, args.interval, args.count)
+        cycle(prefetch, args.interval, args.count, args.verbose, args.debug)
+    # elif args.debug:
+    #     print arcstats()
+    #     as1 = arcstats()
+    #     time.sleep(1)
+    #     as2 = arcstats()
+    #     print (as2 - as1)
     else:
-        cycle(arcstats, args.interval, args.count)
+        cycle(arcstats, args.interval, args.count, args.verbose, args.debug)
 
 
 def main():
@@ -546,6 +582,8 @@ def main():
     parser.add_argument('-v', '--version', action='version', version=VERSION)
     parser.add_argument('-d', '--debug',
         help='help debug this tool', action='store_true')
+    parser.add_argument('--verbose',
+        help='Statistics acronym', action='store_true')
     parser.add_argument('-p', '--parm',
         help='print ZFS module parameters', action='store_true')
     parser.add_argument('-s', '--summary',
