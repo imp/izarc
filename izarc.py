@@ -10,6 +10,7 @@ import time
 import pprint as pp
 import subprocess as sp
 from copy import deepcopy
+from decimal import Decimal, getcontext, InvalidOperation
 
 VERSION = '3'
 
@@ -90,12 +91,17 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'pfshps': 'shit/s', 'pfsmps': 'smiss/s',
     'pfrs': 'rsuc/s', 'pfrf': 'rfail/s', 'pfbs': 'sbogus/s',
     'pfsr': 'sreset/s', 'pfsnr': 'snoreset/s',
+    # io metrics
+    'nreads': 'read/s', 'nwrittens': 'write/s', 'readss': 'read/s', 'writess': 'write/s',
+    'awaitq': 'awaitq', 'waitpct': 'waitq%',
+    'arunq': 'arunq', 'runpct': 'runq%',
     }
 
 
 HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
     'arc': 'ARC SIZE', 'transactions': 'TRANSACTIONS', 'copy': 'DATA COPY', 'anon': 'ANON',
-    'mru': 'MRU', 'mfu': 'MFU', 'gmru': 'GHOST MRU', 'gmfu': 'GHOST MFU'}
+    'mru': 'MRU', 'mfu': 'MFU', 'gmru': 'GHOST MRU', 'gmfu': 'GHOST MFU', 'bandwidth': 'BANDWIDTH',
+    'operations': 'OPERATIONS', 'queue': 'QUEUE'}
 
 ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^16}'
 OUT_TOTAL = '{hps:>8}{mps:>8}'
@@ -126,6 +132,12 @@ PREFETCH_TOTAL = '{pfhps:>8}{pfmps:>8}'
 PREFETCH_INTERN = '{pfchps:>8}{pfcmps:>8}{pfshps:>8}{pfsmps:>8}'
 PREFETCH_MISC = '{pfrs:>8}{pfrf:>8}{pfsr:>10}{pfsnr:>12}{pfbs:>10}'
 PREFETCH_FORMAT = PREFETCH_TOTAL + PREFETCH_INTERN + PREFETCH_MISC
+
+IO_HEADER = '{bandwidth:^20}{operations:^20}{queue:^32}'
+IO_OPS = '{nreads:>10}{nwrittens:>10}{readss:>10}{writess:>10}'
+IO_WAIT = '{awaitq:>8}{waitpct:>8}'
+IO_RUN = '{arunq:>8}{runpct:>8}'
+IO_FORMAT = IO_OPS + IO_WAIT + IO_RUN
 
 
 def humanize(number):
@@ -202,7 +214,7 @@ class kstat(object):
         elif self._type == self.KSTAT_TYPE_INTR:
             raise NotImplementedError(self._type)
         elif self._type == self.KSTAT_TYPE_IO:
-            raise NotImplementedError(self._type)
+            self._init_io(lines)
         elif self._type == self.KSTAT_TYPE_TIMER:
             raise NotImplementedError(self._type)
         elif self._type == self.KSTAT_TYPE_TXG:
@@ -221,6 +233,11 @@ class kstat(object):
             else:
                 pass
 
+    def _init_io(self, lines):
+        headers = lines[1].split()
+        data = [long(d) for d in lines[2].split()]
+        self._kstat = dict(zip(headers, data))
+
     def __sub__(self, other):
         if not isinstance(other, kstat):
             return NotImplemented
@@ -234,6 +251,84 @@ class kstat(object):
         text = 'kid {self._kid}\n'.format(self=self)
         text = pp.pformat(self._kstat)
         return text
+
+
+class io(kstat):
+    def __init__(self, pool):
+        self._pool = pool
+        super(io, self).__init__(os.path.join('zfs', self._pool), 'io')
+
+    @classmethod
+    def acronym(cls):
+        out = '\n----- IO Acronym -----\n'
+        out += 'read/s          - Number of bytes/operations read per second\n'
+        out += 'write/s         - Number of bytes/operations written per second\n'
+        out += 'awaitq          - Average time in wait queue\n'
+        out += 'waitq%          - Percentage of time spent in wait queue at given time interval\n'
+        out += 'arunq           - Average time in run queue\n'
+        out += 'runq%           - Percentage of time spent in run queue at given time interval\n'
+        # out += 'wtime           - cumulative wait (pre-service) time (sec)\n'
+        # out += 'wlentime        - cumulative wait length*time product (sec)\n'
+        # out += 'wlastupdate     - last time wait queue changed (sec)\n'
+        # out += 'rtime           - cumulative run (service) time (sec)\n'
+        # out += 'rlentime        - cumulative run length*time produc (sec)\n'
+        # out += 'rlastupdate     - last time run queue changed (sec)\n'
+        # out += 'wcnt            - count of elements in wait state\n'
+        # out += 'rcnt            - count of elements in run state\n'
+        return out
+
+    def compute(self):
+        delta = self._snaptime / NANOSEC
+        raw = self._kstat.copy()
+        raw['nreads'] = self._kstat['nread'] / delta
+        raw['nwrittens'] = self._kstat['nwritten'] / delta
+        raw['readss'] = self._kstat['reads'] / delta
+        raw['writess'] = self._kstat['writes'] / delta
+        # Accumulated time and queue length statistics.
+        #
+        # Accumulated time statistics are kept as a running sum
+        # of "active" time.  Queue length statistics are kept as a
+        # running sum of the product of queue length and elapsed time
+        # at that length
+        # At each change of state (entry or exit from the queue),
+        # we add the elapsed time (since the previous state change)
+        # to the active time if the queue length was non-zero during
+        # that interval; and we add the product of the elapsed time
+        # times the queue length to the running length*time sum.
+        #
+        # All times are 64-bit nanoseconds (hrtime_t), as returned by gethrtime().
+        # raw['wtime'] = long(self._kstat['wtime'])
+        # raw['wlentime'] = int(self._kstat['wlentime'])
+        # raw['wupdate'] = int(self._kstat['wupdate'])
+        # raw['rtime'] = int(self._kstat['rtime'])
+        # raw['rlentime'] = int(self._kstat['rlentime'])
+        # raw['rupdate'] = int(self._kstat['rupdate'])
+        # raw['wcnt'] = self._kstat['wcnt']
+        # raw['rcnt'] = self._kstat['rcnt']
+
+        getcontext().prec = 3
+        try:
+            raw['awaitq'] = Decimal(self._kstat['wlentime']) / Decimal(self._kstat['wtime'])
+        except InvalidOperation:
+            raw['awaitq'] = 0
+        raw['waitpct'] = Decimal(self._kstat['wtime']) * 100 / Decimal(self._snaptime)
+        try:
+            raw['arunq'] = Decimal(self._kstat['rlentime']) / Decimal(self._kstat['rtime'])
+        except InvalidOperation:
+            raw['arunq'] = 0
+        raw['runpct'] = Decimal(self._kstat['rtime']) * 100 / Decimal(self._snaptime)
+        return raw
+
+    def headers(self):
+        header = '\n'
+        header += IO_HEADER.format(**HEADER_NAMES)
+        header += '\n'
+        header += IO_FORMAT.format(**METRIC_NAMES)
+        return header
+
+    def data(self):
+        raw = self.compute()
+        return IO_FORMAT.format(**raw)
 
 
 class prefetch(kstat):
@@ -566,6 +661,9 @@ def execute(args):
         cycle(extendarc, args.interval, args.count, args.verbose, args.debug)
     elif args.prefetch:
         cycle(prefetch, args.interval, args.count, args.verbose, args.debug)
+    elif args.pool:
+        if args.io:
+            cycle(io, args.interval, args.count, args.verbose, args.debug, pool=args.pool)
     # elif args.debug:
     #     print arcstats()
     #     as1 = arcstats()
@@ -596,6 +694,10 @@ def main():
         help='print L2ARC statistics', action='store_true')
     parser.add_argument('-f', '--prefetch',
         help='print prefetch statistics', action='store_true')
+    parser.add_argument('--pool',
+        help='pool name to report statistics', nargs='?')
+    parser.add_argument('--io',
+        help='print POOL\'s io statistics', action='store_true')
     parser.add_argument('interval',
         help='seconds between probes', type=int, nargs='?', default=1)
     parser.add_argument('count',
