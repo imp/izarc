@@ -96,6 +96,10 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     'nreads': 'read/s', 'nwrittens': 'write/s', 'readss': 'read/s', 'writess': 'write/s',
     'awaitq': 'awaitq', 'waitpct': 'waitq%',
     'arunq': 'arunq', 'runpct': 'runq%',
+    # txgs metrics
+    'txg': 'txg', 'birth': 'birth', 'state': 'state',
+    'nreserved': 'nreserved', 'nread': 'nread', 'nwritten': 'nwritten', 'reads': 'reads', 'writes': 'writes',
+    'otime': 'otime', 'qtime': 'qtime', 'stime': 'stime',
     }
 
 
@@ -139,6 +143,11 @@ IO_OPS = '{nreads:>10}{nwrittens:>10}{readss:>10}{writess:>10}'
 IO_WAIT = '{awaitq:>8}{waitpct:>8}'
 IO_RUN = '{arunq:>8}{runpct:>8}'
 IO_FORMAT = IO_OPS + IO_WAIT + IO_RUN
+
+TXGS_GEN = '{txg:>8}{birth:>20}{state:>8}'
+TXGS_OPS = '{nreserved:>10}{nread:>10}{nwritten:>12}{reads:>10}{writes:>10}'
+TXGS_TIME = '{otime:>12}{qtime:>12}{stime:>12}'
+TXGS_FORMAT = TXGS_GEN + TXGS_OPS + TXGS_TIME
 
 
 def humanize(number):
@@ -200,6 +209,7 @@ class kstat(object):
 
     def __init__(self, module=None, name=None):
         self._kstat = dict()
+        self._raw_data = ''
         if module and name:
             self._file = os.path.join(self.KSTATBASE, module, name)
             self._init_kstat()
@@ -208,12 +218,20 @@ class kstat(object):
 
     def _init_kstat(self):
         lines = open(self._file).readlines()
-        # Parse common kstat data
-        (self._kid, self._type, self._flags, self._ndata, self._data_size,
-            self._crtime, self._snaptime) = [int(i, 0) for i in lines[0].split()]
+        try:
+            # Parse common kstat data
+            (self._kid, self._type, self._flags, self._ndata, self._data_size,
+                self._crtime, self._snaptime) = [int(i, 0) for i in lines[0].split()]
+        except IndexError:
+            time.sleep(1)
+            lines = open(self._file).readlines()
+            # Parse common kstat data
+            (self._kid, self._type, self._flags, self._ndata, self._data_size,
+                self._crtime, self._snaptime) = [int(i, 0) for i in lines[0].split()]
+
         # Parse the rest of kstat data
         if self._type == self.KSTAT_TYPE_RAW:
-            raise NotImplementedError(self._type)
+            self._init_raw(lines)
         elif self._type == self.KSTAT_TYPE_NAMED:
             self._init_named(lines)
         elif self._type == self.KSTAT_TYPE_INTR:
@@ -229,7 +247,11 @@ class kstat(object):
 
     def _init_named(self, lines):
         for line in lines[2:]:
-            name, data, value = line.split()
+            try:
+                name, data, value = line.split()
+            except ValueError:
+                name, metric, data, value = line.split()
+                name += ' ' + metric
             data = int(data)
             if data == self.KSTAT_DATA_CHAR:
                 pass
@@ -242,6 +264,10 @@ class kstat(object):
         headers = lines[1].split()
         data = [long(d) for d in lines[2].split()]
         self._kstat = dict(zip(headers, data))
+
+    def _init_raw(self, lines):
+        self._raw_data = lines[1:]
+        return self._raw_data
 
     def __sub__(self, other):
         if not isinstance(other, kstat):
@@ -256,6 +282,85 @@ class kstat(object):
         text = 'kid {self._kid}\n'.format(self=self)
         text = pp.pformat(self._kstat)
         return text
+
+class tx_assign(kstat):
+    MAX_TIME = 42
+    TX_ASSIGN_FORMAT = ''
+
+    def __init__(self, pool):
+        self._pool = pool
+        super(tx_assign, self).__init__(os.path.join('zfs', self._pool), 'dmu_tx_assign')
+        self._init_metric_names()
+
+    def _init_metric_names(self):
+        for i in range(self.MAX_TIME):
+            t = '{0} ns'.format(pow(2, i))
+            METRIC_NAMES[t] = t
+
+    @classmethod
+    def acronym(cls):
+        out = '\n----- TX_ASSIGN Acronym -----\n'
+        out += '1 ns          - number of transactions which took 1 ns enter to txg at given time interval\n'
+        out += '...\n'
+        out += '1048576 ns    - number of transactions which took 1048576 ns enter to txg at given time interval\n'
+        out += '...\n'
+        return out
+
+    def compute(self):
+        delta = self._snaptime / NANOSEC
+        raw = self._kstat.copy()
+        for i in range(self.MAX_TIME):
+            t = '{0} ns'.format(pow(2, i))
+            raw[t] = self._kstat.get(t, 0) / delta
+            if raw[t] != 0:
+                self.TX_ASSIGN_FORMAT += ('{' + t + ':>15}')
+        return raw
+
+    def headers(self):
+        pass
+
+    def data(self):
+        raw = self.compute()
+        header = self.TX_ASSIGN_FORMAT.format(**METRIC_NAMES)
+        if header:
+            header += '\n'
+        return header + self.TX_ASSIGN_FORMAT.format(**raw)
+
+
+class txgs(kstat):
+    def __init__(self, pool):
+        self._pool = pool
+        super(txgs, self).__init__(os.path.join('zfs', self._pool), 'txgs')
+
+    @classmethod
+    def acronym(cls):
+        out = '\n----- TXGS Acronym -----\n'
+        out += 'txg           - Transaction group id\n'
+        out += 'birth         - Transaction group birth timestamp in ns\n'
+        out += 'state         - Transaction group state (Open/Quiescing/Syncing)\n'
+        out += 'nread         - Number of bytes read\n'
+        out += 'nwritten      - Number of bytes written\n'
+        out += 'reads         - Number of read operations\n'
+        out += 'writes        - Number of write operations\n'
+        out += 'otime         - Time spent in Open state in ns\n'
+        out += 'qtime         - Time spent in Quiescing state in ns\n'
+        out += 'stime         - Time spent in Syncing state in ns\n'
+        return out
+
+    def data(self):
+        return self._raw_data
+
+    def latest_data(self):
+        data = self._raw_data[0]
+        for line in self._raw_data[-2:]:
+            data += line
+        return data
+
+    def __str__(self):
+        data = ''
+        for line in self._raw_data:
+            data += line
+        return data
 
 
 class io(kstat):
@@ -647,11 +752,31 @@ def cycle(stats, interval, count, verbose, debug, **kwargs):
         cur = stats(**kwargs)
         delta = cur - prev
         if lines % 20 == 0:
-            print delta.headers()
-        lines += 1
-        print delta.data()
+            header = delta.headers()
+            if header:
+                print header
+        data = delta.data()
+        if data:
+            lines += 1
+            print data
         if count:
             time.sleep(interval)
+
+def raw_history(stats, interval, verbose, debug, **kwargs):
+    if verbose:
+        print stats.acronym()
+    time.sleep(5)
+    cur = stats(**kwargs)
+    if debug:
+        print cur
+    txgs_count =  len(cur.data())
+    print cur
+    while True:
+        cur = stats(**kwargs)
+        if len(cur.data()) != txgs_count:
+            print cur.latest_data()
+            txgs_count =  len(cur.data())
+        time.sleep(interval)
 
 def execute(args):
     if args.outfile:
@@ -675,11 +800,17 @@ def execute(args):
     elif args.prefetch:
         cycle(prefetch, args.interval, args.count, args.verbose, args.debug)
     elif args.pool:
-        set_zfsparams(dict(zfs_read_history='1000',
+        set_zfsparams(dict(zfs_read_history='100',
                            zfs_read_history_hits='1',
-                           zfs_txg_history='1000'))
+                           zfs_txg_history='100'))
         if args.io:
             cycle(io, args.interval, args.count, args.verbose, args.debug, pool=args.pool)
+        elif args.tx_assign:
+            cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, pool=args.pool)
+        elif args.txgs:
+            raw_history(txgs, args.interval, args.verbose, args.debug, pool=args.pool)
+        elif args.read:
+            pass
     # elif args.debug:
     #     print arcstats()
     #     as1 = arcstats()
@@ -716,6 +847,12 @@ def main():
         help='pool name to report statistics', nargs='?')
     parser.add_argument('--io',
         help='print POOL\'s io statistics', action='store_true')
+    parser.add_argument('--tx_assign',
+        help='print POOL\'s dmu_tx_assign statistics', action='store_true')
+    # parser.add_argument('--read',
+    #     help='print POOL\'s read statistics', action='store_true')
+    parser.add_argument('--txgs',
+        help='print POOL\'s txgs statistics', action='store_true')
     parser.add_argument('interval',
         help='seconds between probes', type=int, nargs='?', default=1)
     parser.add_argument('count',
