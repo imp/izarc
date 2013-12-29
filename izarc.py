@@ -173,6 +173,10 @@ def zfsparams():
         out += '{name:40}{value:>20}  ({parm})\n'.format(name=params[parm], parm=parm, value=val)
     return out
 
+def set_zfsparams(params):
+    for item in params:
+        with open(os.path.join(MODPARAMPREF, item), 'w') as param:
+            param.write(params[item])
 
 class Integer(long):
     def __str__(self):
@@ -662,6 +666,9 @@ def execute(args):
     elif args.prefetch:
         cycle(prefetch, args.interval, args.count, args.verbose, args.debug)
     elif args.pool:
+        set_zfsparams(dict(zfs_read_history='1000',
+                           zfs_read_history_hits='1',
+                           zfs_txg_history='1000'))
         if args.io:
             cycle(io, args.interval, args.count, args.verbose, args.debug, pool=args.pool)
     # elif args.debug:
@@ -712,3 +719,7 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         pass
+
+    set_zfsparams(dict(zfs_read_history='0',
+                       zfs_read_history_hits='0',
+                       zfs_txg_history='0'))
