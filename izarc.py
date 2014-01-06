@@ -4,6 +4,7 @@
 # Use is subject to license terms.
 #
 
+import sys
 import argparse
 import os.path
 import time
@@ -653,6 +654,14 @@ def cycle(stats, interval, count, verbose, debug, **kwargs):
             time.sleep(interval)
 
 def execute(args):
+    if args.outfile:
+        try:
+            out = open(args.outfile, "w")
+            sys.stdout = out
+        except IOError:
+            sys.stderr.write("Cannot open %s for writing\n" % args.outfile)
+            sys.exit(1)
+
     if args.summary:
         print arcstats().summary()
     elif args.parm:
@@ -689,6 +698,8 @@ def main():
         help='help debug this tool', action='store_true')
     parser.add_argument('--verbose',
         help='Statistics acronym', action='store_true')
+    parser.add_argument('-o', '--outfile',
+        help='Redirect output to the specified file', nargs='?')
     parser.add_argument('-p', '--parm',
         help='print ZFS module parameters', action='store_true')
     parser.add_argument('-s', '--summary',
