@@ -18,6 +18,7 @@ VERSION = '3'
 NANOSEC = 1000000000
 MODPARAMPREF = '/sys/module/zfs/parameters'
 ZFSMODPARAMS = ['/sbin/modinfo', '-F', 'parm', 'zfs']
+ZFSVERSION = ['rpm', '-q', 'zfs']
 
 ARCSUMMARY = '''
 ARC Size
@@ -172,6 +173,25 @@ def humanize_dict(d):
         res[i] = humanize(d[i])
     return res
 
+def zfsversion():
+    cmd = sp.Popen(ZFSVERSION, stdout=sp.PIPE)
+    # zfs-0.6.2.19-1.el6.x86_64
+    rpm = cmd.communicate()[0]
+    ver = rpm.split('-')[1]
+    ver = [int(v) for v in ver.split('.')]
+    # [0, 6, 2, 19]
+    return ver
+
+# Minimal version supportd pool's kstat is zfs-0.6.2.19
+def pool_kstat_supported():
+    ver = zfsversion()
+    if ver[2] < 3:
+        try:
+            if ver[3] < 19:
+                return False
+        except IndexError:
+            return False
+    return True
 
 def zfsparams():
     cmd = sp.Popen(ZFSMODPARAMS, stdout=sp.PIPE)
@@ -843,16 +863,19 @@ def main():
         help='print L2ARC statistics', action='store_true')
     parser.add_argument('-f', '--prefetch',
         help='print prefetch statistics', action='store_true')
-    parser.add_argument('--pool',
-        help='pool name to report statistics', nargs='?')
-    parser.add_argument('--io',
-        help='print POOL\'s io statistics', action='store_true')
-    parser.add_argument('--tx_assign',
-        help='print POOL\'s dmu_tx_assign statistics', action='store_true')
-    # parser.add_argument('--read',
-    #     help='print POOL\'s read statistics', action='store_true')
-    parser.add_argument('--txgs',
-        help='print POOL\'s txgs statistics', action='store_true')
+
+    if pool_kstat_supported():
+        parser.add_argument('--pool',
+            help='pool name to report statistics', nargs='?')
+        parser.add_argument('--io',
+            help='print POOL\'s io statistics', action='store_true')
+        parser.add_argument('--tx_assign',
+            help='print POOL\'s dmu_tx_assign statistics', action='store_true')
+        # parser.add_argument('--read',
+        #     help='print POOL\'s read statistics', action='store_true')
+        parser.add_argument('--txgs',
+            help='print POOL\'s txgs statistics', action='store_true')
+
     parser.add_argument('interval',
         help='seconds between probes', type=int, nargs='?', default=1)
     parser.add_argument('count',
@@ -868,6 +891,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
 
-    set_zfsparams(dict(zfs_read_history='0',
-                       zfs_read_history_hits='0',
-                       zfs_txg_history='0'))
+    if pool_kstat_supported():
+        set_zfsparams(dict(zfs_read_history='0',
+                           zfs_read_history_hits='0',
+                           zfs_txg_history='0'))
