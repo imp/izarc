@@ -140,8 +140,8 @@ PREFETCH_INTERN = '{pfchps:>8}{pfcmps:>8}{pfshps:>8}{pfsmps:>8}'
 PREFETCH_MISC = '{pfrs:>8}{pfrf:>8}{pfsr:>10}{pfsnr:>12}{pfbs:>10}'
 PREFETCH_FORMAT = PREFETCH_TOTAL + PREFETCH_INTERN + PREFETCH_MISC
 
-IO_HEADER = '{bandwidth:^20}{operations:^20}{queue:^32}'
-IO_OPS = '{nreads:>10}{nwrittens:>10}{readss:>10}{writess:>10}'
+IO_HEADER = '{bandwidth:^30}{operations:^20}{queue:^32}'
+IO_OPS = '{nreads:>15}{nwrittens:>15}{readss:>10}{writess:>10}'
 IO_WAIT = '{awaitq:>8}{waitpct:>8}'
 IO_RUN = '{arunq:>8}{runpct:>8}'
 IO_FORMAT = IO_OPS + IO_WAIT + IO_RUN
