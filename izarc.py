@@ -146,8 +146,30 @@ IO_WAIT = '{awaitq:>8}{waitpct:>8}'
 IO_RUN = '{arunq:>8}{runpct:>8}'
 IO_FORMAT = IO_OPS + IO_WAIT + IO_RUN
 
-TXGS_GEN = '{txg:>8}{birth:>20}{state:>8}'
-TXGS_OPS = '{nreserved:>10}{nread:>10}{nwritten:>12}{reads:>10}{writes:>10}'
+
+def zfsversion():
+    cmd = sp.Popen(ZFSVERSION, stdout=sp.PIPE)
+    # zfs-0.6.2.19-1.el6.x86_64
+    rpm = cmd.communicate()[0]
+    ver = rpm.split('-')[1]
+    ver = [int(v) for v in ver.split('.')]
+    # [0, 6, 2, 19]
+    return ver
+
+# Minimal version supportd pool's kstat is zfs-0.6.2.19
+def pool_kstat_supported():
+    ver = zfsversion()
+    if ver[2] < 3:
+        try:
+            if ver[3] < 19:
+                return False
+        except IndexError:
+            return False
+    return True
+
+TXGS_GEN = '{txg:>8}{birth:>20}{state:>8}' if pool_kstat_supported() else '{txg:>8}{state:>8}{birth:>20}'
+TXGS_RESRV = '{nreserved:>10}' if pool_kstat_supported() else ''
+TXGS_OPS = TXGS_RESRV + '{nread:>10}{nwritten:>12}{reads:>10}{writes:>10}'
 TXGS_TIME = '{otime:>12}{qtime:>12}{stime:>12}'
 TXGS_FORMAT = TXGS_GEN + TXGS_OPS + TXGS_TIME
 
@@ -173,26 +195,6 @@ def humanize_dict(d):
     for i in d:
         res[i] = humanize(d[i])
     return res
-
-def zfsversion():
-    cmd = sp.Popen(ZFSVERSION, stdout=sp.PIPE)
-    # zfs-0.6.2.19-1.el6.x86_64
-    rpm = cmd.communicate()[0]
-    ver = rpm.split('-')[1]
-    ver = [int(v) for v in ver.split('.')]
-    # [0, 6, 2, 19]
-    return ver
-
-# Minimal version supportd pool's kstat is zfs-0.6.2.19
-def pool_kstat_supported():
-    ver = zfsversion()
-    if ver[2] < 3:
-        try:
-            if ver[3] < 19:
-                return False
-        except IndexError:
-            return False
-    return True
 
 def zfsparams():
     cmd = sp.Popen(ZFSMODPARAMS, stdout=sp.PIPE)
@@ -222,7 +224,7 @@ class kstat(object):
     KSTAT_TYPE_INTR = 2
     KSTAT_TYPE_IO = 3
     KSTAT_TYPE_TIMER = 4
-    KSTAT_TYPE_TXG = 5
+    KSTAT_NUM_TYPES = 5
 
     # kstat data types
     KSTAT_DATA_CHAR = 0
@@ -261,8 +263,9 @@ class kstat(object):
             self._init_io(lines)
         elif self._type == self.KSTAT_TYPE_TIMER:
             raise NotImplementedError(self._type)
-        elif self._type == self.KSTAT_TYPE_TXG:
-            raise NotImplementedError(self._type)
+        elif self._type == self.KSTAT_NUM_TYPES:
+            # on zfs < 0.6.2.19 txgs has this type, but now it changed to KSTAT_TYPE_RAW
+            self._init_raw(lines)
         else:
             raise NotImplementedError(self._type)
 
@@ -310,12 +313,17 @@ class tx_assign(kstat):
 
     def __init__(self, pool):
         self._pool = pool
-        super(tx_assign, self).__init__(os.path.join('zfs', self._pool), 'dmu_tx_assign')
+        if pool_kstat_supported():
+            super(tx_assign, self).__init__(os.path.join('zfs', self._pool), 'dmu_tx_assign')
+        else:
+            super(tx_assign, self).__init__(os.path.join('zfs'), 'dmu_tx_assign-{0}'.format(self._pool))
+
         self._init_metric_names()
 
     def _init_metric_names(self):
         for i in range(self.MAX_TIME):
-            t = '{0} ns'.format(pow(2, i))
+            units = 'ns' if pool_kstat_supported() else 'us'
+            t = '{0} {1}'.format(pow(2, i), units)
             METRIC_NAMES[t] = t
 
     @classmethod
@@ -331,7 +339,8 @@ class tx_assign(kstat):
         delta = self._snaptime / NANOSEC
         raw = self._kstat.copy()
         for i in range(self.MAX_TIME):
-            t = '{0} ns'.format(pow(2, i))
+            units = 'ns' if pool_kstat_supported() else 'us'
+            t = '{0} {1}'.format(pow(2, i), units)
             raw[t] = self._kstat.get(t, 0) / delta
             if raw[t] != 0:
                 self.TX_ASSIGN_FORMAT += ('{' + t + ':>15}')
@@ -351,7 +360,10 @@ class tx_assign(kstat):
 class txgs(kstat):
     def __init__(self, pool):
         self._pool = pool
-        super(txgs, self).__init__(os.path.join('zfs', self._pool), 'txgs')
+        if pool_kstat_supported():
+            super(txgs, self).__init__(os.path.join('zfs', self._pool), 'txgs')
+        else:
+            super(txgs, self).__init__(os.path.join('zfs'), 'txgs-{0}'.format(self._pool))
 
     @classmethod
     def acronym(cls):
@@ -372,8 +384,8 @@ class txgs(kstat):
         return self._raw_data
 
     def latest_data(self):
-        data = self._raw_data[0]
-        for line in self._raw_data[-2:]:
+        data = self._raw_data[0] if len(self._raw_data) > 3 else ''
+        for line in self._raw_data[-3:]:
             data += line
         return data
 
@@ -777,7 +789,7 @@ def cycle(stats, interval, count, verbose, debug, timestamp, **kwargs):
             if header:
                 print header
 
-        probetime = '    {}'.format(datetime.now()) if timestamp else ''
+        probetime = '    {0}'.format(datetime.now()) if timestamp else ''
         data = delta.data()
         if data:
             lines += 1
@@ -792,14 +804,11 @@ def raw_history(stats, interval, verbose, debug, timestamp, **kwargs):
     cur = stats(**kwargs)
     if debug:
         print cur
-    txgs_count =  len(cur.data())
     print cur
     while True:
         cur = stats(**kwargs)
-        if len(cur.data()) != txgs_count:
-            probetime = '    {}\n'.format(datetime.now()) if timestamp else ''
-            print probetime + cur.latest_data()
-            txgs_count =  len(cur.data())
+        probetime = '    {0}\n'.format(datetime.now()) if timestamp else ''
+        print probetime + cur.latest_data()
         time.sleep(interval)
 
 def execute(args):
@@ -826,17 +835,24 @@ def execute(args):
     elif args.prefetch:
         cycle(prefetch, args.interval, args.count, args.verbose, args.debug, args.time)
     elif args.pool:
-        set_zfsparams(dict(zfs_read_history='100',
-                           zfs_read_history_hits='1',
-                           zfs_txg_history='100'))
+        if pool_kstat_supported():
+            set_zfsparams(dict(zfs_read_history='100',
+                               zfs_read_history_hits='1',
+                               zfs_txg_history='100'))
         if args.io:
-            cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
+            if pool_kstat_supported():
+                cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
+            else:
+                print "--io option supported for zfs >= 0.6.2.19 only"
         elif args.tx_assign:
             cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.txgs:
             raw_history(txgs, args.interval, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.read:
-            pass
+            if pool_kstat_supported():
+                pass
+            else:
+                print "--read option supported for zfs >= 0.6.2.19 only"
     # elif args.debug:
     #     print arcstats()
     #     as1 = arcstats()
@@ -871,18 +887,16 @@ def main():
         help='print L2ARC statistics', action='store_true')
     parser.add_argument('-f', '--prefetch',
         help='print prefetch statistics', action='store_true')
-
-    if pool_kstat_supported():
-        parser.add_argument('--pool',
-            help='pool name to report statistics', nargs='?')
-        parser.add_argument('--io',
-            help='print POOL\'s io statistics', action='store_true')
-        parser.add_argument('--tx_assign',
-            help='print POOL\'s dmu_tx_assign statistics', action='store_true')
-        # parser.add_argument('--read',
-        #     help='print POOL\'s read statistics', action='store_true')
-        parser.add_argument('--txgs',
-            help='print POOL\'s txgs statistics', action='store_true')
+    parser.add_argument('--pool',
+        help='pool name to report statistics', nargs='?')
+    parser.add_argument('--tx_assign',
+        help='print POOL\'s dmu_tx_assign statistics', action='store_true')
+    parser.add_argument('--txgs',
+        help='print POOL\'s txgs statistics', action='store_true')
+    parser.add_argument('--io',
+        help='print POOL\'s io statistics', action='store_true')
+    # parser.add_argument('--read',
+    #     help='print POOL\'s read statistics', action='store_true')
 
     parser.add_argument('interval',
         help='seconds between probes', type=int, nargs='?', default=1)
