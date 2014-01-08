@@ -12,6 +12,7 @@ import pprint as pp
 import subprocess as sp
 from copy import deepcopy
 from decimal import Decimal, getcontext, InvalidOperation
+from datetime import datetime
 
 VERSION = '3'
 
@@ -756,7 +757,7 @@ class zil(kstat):
         raw = self.compute()
         return ZIL_FORMAT.format(**raw)
 
-def cycle(stats, interval, count, verbose, debug, **kwargs):
+def cycle(stats, interval, count, verbose, debug, timestamp, **kwargs):
     if verbose:
         print stats.acronym()
     step = 1 if count else 0
@@ -775,14 +776,16 @@ def cycle(stats, interval, count, verbose, debug, **kwargs):
             header = delta.headers()
             if header:
                 print header
+
+        probetime = '    {}'.format(datetime.now()) if timestamp else ''
         data = delta.data()
         if data:
             lines += 1
-            print data
+            print data + probetime
         if count:
             time.sleep(interval)
 
-def raw_history(stats, interval, verbose, debug, **kwargs):
+def raw_history(stats, interval, verbose, debug, timestamp, **kwargs):
     if verbose:
         print stats.acronym()
     time.sleep(5)
@@ -794,7 +797,8 @@ def raw_history(stats, interval, verbose, debug, **kwargs):
     while True:
         cur = stats(**kwargs)
         if len(cur.data()) != txgs_count:
-            print cur.latest_data()
+            probetime = '    {}\n'.format(datetime.now()) if timestamp else ''
+            print probetime + cur.latest_data()
             txgs_count =  len(cur.data())
         time.sleep(interval)
 
@@ -808,27 +812,29 @@ def execute(args):
             sys.exit(1)
 
     if args.summary:
+        if args.time:
+            print datetime.now()
         print arcstats().summary()
     elif args.parm:
         print zfsparams()
     elif args.zil:
-        cycle(zil, args.interval, args.count, args.verbose, args.debug)
+        cycle(zil, args.interval, args.count, args.verbose, args.debug, args.time)
     elif args.l2arc:
-        cycle(l2arc, args.interval, args.count, args.verbose, args.debug)
+        cycle(l2arc, args.interval, args.count, args.verbose, args.debug, args.time)
     elif args.extend:
-        cycle(extendarc, args.interval, args.count, args.verbose, args.debug)
+        cycle(extendarc, args.interval, args.count, args.verbose, args.debug, args.time)
     elif args.prefetch:
-        cycle(prefetch, args.interval, args.count, args.verbose, args.debug)
+        cycle(prefetch, args.interval, args.count, args.verbose, args.debug, args.time)
     elif args.pool:
         set_zfsparams(dict(zfs_read_history='100',
                            zfs_read_history_hits='1',
                            zfs_txg_history='100'))
         if args.io:
-            cycle(io, args.interval, args.count, args.verbose, args.debug, pool=args.pool)
+            cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.tx_assign:
-            cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, pool=args.pool)
+            cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.txgs:
-            raw_history(txgs, args.interval, args.verbose, args.debug, pool=args.pool)
+            raw_history(txgs, args.interval, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.read:
             pass
     # elif args.debug:
@@ -838,7 +844,7 @@ def execute(args):
     #     as2 = arcstats()
     #     print (as2 - as1)
     else:
-        cycle(arcstats, args.interval, args.count, args.verbose, args.debug)
+        cycle(arcstats, args.interval, args.count, args.verbose, args.debug, args.time)
 
 
 def main():
@@ -851,6 +857,8 @@ def main():
         help='Statistics acronym', action='store_true')
     parser.add_argument('-o', '--outfile',
         help='Redirect output to the specified file', nargs='?')
+    parser.add_argument('-t', '--time',
+        help='print timestamp', action='store_true')
     parser.add_argument('-p', '--parm',
         help='print ZFS module parameters', action='store_true')
     parser.add_argument('-s', '--summary',
