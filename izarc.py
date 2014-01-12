@@ -13,6 +13,7 @@ import subprocess as sp
 from copy import deepcopy
 from decimal import Decimal, getcontext, InvalidOperation
 from datetime import datetime
+from glob import glob
 
 VERSION = '3'
 
@@ -173,6 +174,20 @@ TXGS_OPS = TXGS_RESRV + '{nread:>10}{nwritten:>12}{reads:>10}{writes:>10}'
 TXGS_TIME = '{otime:>12}{qtime:>12}{stime:>12}'
 TXGS_FORMAT = TXGS_GEN + TXGS_OPS + TXGS_TIME
 
+IZARCDIR = '/var/log/izarc'
+
+def create_pid():
+    if not os.path.exists(IZARCDIR):
+        os.mkdir(IZARCDIR)
+
+    PIDFILE = os.path.join(IZARCDIR, str(os.getpid()))
+    with open(PIDFILE, 'w'):
+        pass
+
+def destroy_pid():
+    PIDFILE = os.path.join(IZARCDIR, str(os.getpid()))
+    if os.path.exists(PIDFILE):
+        os.unlink(PIDFILE)
 
 def humanize(number):
     number = int(number)
@@ -904,8 +919,8 @@ def main():
         help='number of probes to run', type=int, nargs='?', default=0)
 
     args = parser.parse_args()
+    create_pid()
     execute(args)
-
 
 if __name__ == '__main__':
     try:
@@ -913,7 +928,9 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
 
-    if pool_kstat_supported():
+    destroy_pid()
+    pids = glob(os.path.join(IZARCDIR, '*'))
+    if pool_kstat_supported() and not pids:
         set_zfsparams(dict(zfs_read_history='0',
                            zfs_read_history_hits='0',
                            zfs_txg_history='0'))
