@@ -384,8 +384,8 @@ class txgs(kstat):
         return self._raw_data
 
     def latest_data(self):
-        data = self._raw_data[0] if len(self._raw_data) > 3 else ''
-        for line in self._raw_data[-3:]:
+        data = self._raw_data[0] if len(self._raw_data) > 4 else ''
+        for line in self._raw_data[-4:]:
             data += line
         return data
 
@@ -406,9 +406,9 @@ class io(kstat):
         out = '\n----- IO Acronym -----\n'
         out += 'read/s          - Number of bytes/operations read per second\n'
         out += 'write/s         - Number of bytes/operations written per second\n'
-        out += 'awaitq          - Average time in wait queue\n'
+        out += 'awaitq          - Average length of wait queue\n'
         out += 'waitq%          - Percentage of time spent in wait queue at given time interval\n'
-        out += 'arunq           - Average time in run queue\n'
+        out += 'arunq           - Average length of run queue\n'
         out += 'runq%           - Percentage of time spent in run queue at given time interval\n'
         # out += 'wtime           - cumulative wait (pre-service) time (sec)\n'
         # out += 'wlentime        - cumulative wait length*time product (sec)\n'
