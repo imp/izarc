@@ -392,6 +392,7 @@ class txgs(kstat):
         out += 'writes        - Number of write operations\n'
         out += 'otime         - Time spent in Open state in ns\n'
         out += 'qtime         - Time spent in Quiescing state in ns\n'
+        out += 'wtime         - Time spent in Wait (between Quiescing and Syncing) state in ns\n'
         out += 'stime         - Time spent in Syncing state in ns\n'
         return out
 
@@ -399,8 +400,8 @@ class txgs(kstat):
         return self._raw_data
 
     def latest_data(self):
-        data = self._raw_data[0] if len(self._raw_data) > 4 else ''
-        for line in self._raw_data[-4:]:
+        data = self._raw_data[0] if len(self._raw_data) > 5 else ''
+        for line in self._raw_data[-5:]:
             data += line
         return data
 
