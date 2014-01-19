@@ -11,7 +11,7 @@ import time
 import pprint as pp
 import subprocess as sp
 from copy import deepcopy
-from decimal import Decimal, getcontext, InvalidOperation
+from decimal import Decimal, getcontext, InvalidOperation, DivisionByZero
 from datetime import datetime
 from glob import glob
 
@@ -102,7 +102,9 @@ METRIC_NAMES = {'hps': 'hit/s', 'mps': 'miss/s',
     # txgs metrics
     'txg': 'txg', 'birth': 'birth', 'state': 'state',
     'nreserved': 'nreserved', 'nread': 'nread', 'nwritten': 'nwritten', 'reads': 'reads', 'writes': 'writes',
-    'otime': 'otime', 'qtime': 'qtime', 'stime': 'stime',
+    'otime': 'otime', 'qtime': 'qtime', 'wtime': 'wtime', 'stime': 'stime',
+    # tx_assign metrics
+    'atime': 'atime/s',
     }
 
 
@@ -111,23 +113,23 @@ HEADER_NAMES = {'total': '  TOTAL', 'demand': 'DEMAND', 'prefetch': 'PREFETCH',
     'mru': 'MRU', 'mfu': 'MFU', 'gmru': 'GHOST MRU', 'gmfu': 'GHOST MFU', 'bandwidth': 'BANDWIDTH',
     'operations': 'OPERATIONS', 'queue': 'QUEUE'}
 
-ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^16}'
+ARC_HEADER = '{total:^16}{demand:^32}{prefetch:^32}{arc:^20}'
 OUT_TOTAL = '{hps:>8}{mps:>8}'
 OUT_DEMAND = '{ddhps:>8}{ddmps:>8}{dmdhps:>8}{dmdmps:>8}'
 OUT_PREFETCH = '{pdhps:>8}{pdmps:>8}{pmdhps:>8}{pmdmps:>8}'
-OUT_ARC = '{c!s:>8}{p!s:>8}'
+OUT_ARC = '{c!s:>10}{p!s:>10}'
 ARC_FORMAT = OUT_TOTAL + OUT_DEMAND + OUT_PREFETCH + OUT_ARC
 
-EXTENDEDARC_HEADER = '{anon:^28}{mru:^36}{mfu:^36}{gmru:^36}{gmfu:^36}'
-OUT_ANON = '{anons!s:>8}{adevc:>10}{amevc:>10}'
-OUT_MRU = '{mrus!s:>8}{mruh:>8}{mrudevc:>10}{mrumevc:>10}'
-OUT_MFU = '{mfus!s:>8}{mfuh:>8}{mfudevc:>10}{mfumevc:>10}'
-OUT_GMRU = '{gmrus!s:>8}{gmruh:>8}{gmrudevc:>10}{gmrumevc:>10}'
-OUT_GMFU = '{gmfus!s:>8}{gmfuh:>8}{gmfudevc:>10}{gmfumevc:>10}'
+EXTENDEDARC_HEADER = '{anon:^28}{mru:^38}{mfu:^38}{gmru:^38}{gmfu:^38}'
+OUT_ANON = '{anons!s:>8}{adevc!s:>10}{amevc!s:>10}'
+OUT_MRU = '{mrus!s:>10}{mruh:>8}{mrudevc!s:>10}{mrumevc!s:>10}'
+OUT_MFU = '{mfus!s:>10}{mfuh:>8}{mfudevc!s:>10}{mfumevc!s:>10}'
+OUT_GMRU = '{gmrus!s:>10}{gmruh:>8}{gmrudevc!s:>10}{gmrumevc!s:>10}'
+OUT_GMFU = '{gmfus!s:>10}{gmfuh:>8}{gmfudevc!s:>10}{gmfumevc!s:>10}'
 EXTENDEDARC_FORMAT = OUT_ANON + OUT_MRU + OUT_MFU + OUT_GMRU + OUT_GMFU
 
 L2ARC_SIZE = '{l2size!s:>14}{l2hdrsize!s:>14}'
-L2ARC_IO = '{l2hps:>8}{l2mps:>8}{l2read:>8}{l2write:>8}'
+L2ARC_IO = '{l2hps:>8}{l2mps:>8}{l2read!s:>10}{l2write!s:>10}'
 L2ARC_FORMAT = L2ARC_SIZE + L2ARC_IO
 
 ZIL_HEADER = '{total:^20}{transactions:^40}{copy:^48}'
@@ -142,11 +144,12 @@ PREFETCH_MISC = '{pfrs:>8}{pfrf:>8}{pfsr:>10}{pfsnr:>12}{pfbs:>10}'
 PREFETCH_FORMAT = PREFETCH_TOTAL + PREFETCH_INTERN + PREFETCH_MISC
 
 IO_HEADER = '{bandwidth:^30}{operations:^20}{queue:^32}'
-IO_OPS = '{nreads:>15}{nwrittens:>15}{readss:>10}{writess:>10}'
+IO_OPS = '{nreads!s:>15}{nwrittens!s:>15}{readss:>10}{writess:>10}'
 IO_WAIT = '{awaitq:>8}{waitpct:>8}'
 IO_RUN = '{arunq:>8}{runpct:>8}'
 IO_FORMAT = IO_OPS + IO_WAIT + IO_RUN
 
+TX_ASSIGN_FORMAT = '{atime:>12}'
 
 def zfsversion():
     cmd = sp.Popen(ZFSVERSION, stdout=sp.PIPE)
@@ -322,8 +325,9 @@ class kstat(object):
         text = pp.pformat(self._kstat)
         return text
 
+
 class tx_assign(kstat):
-    MAX_TIME = 42
+    MAX_TIME = 40
     TX_ASSIGN_FORMAT = ''
 
     def __init__(self, pool):
@@ -333,43 +337,39 @@ class tx_assign(kstat):
         else:
             super(tx_assign, self).__init__(os.path.join('zfs'), 'dmu_tx_assign-{0}'.format(self._pool))
 
-        self._init_metric_names()
-
-    def _init_metric_names(self):
-        for i in range(self.MAX_TIME):
-            units = 'ns' if pool_kstat_supported() else 'us'
-            t = '{0} {1}'.format(pow(2, i), units)
-            METRIC_NAMES[t] = t
-
     @classmethod
     def acronym(cls):
         out = '\n----- TX_ASSIGN Acronym -----\n'
-        out += '1 ns          - number of transactions which took 1 ns enter to txg at given time interval\n'
-        out += '...\n'
-        out += '1048576 ns    - number of transactions which took 1048576 ns enter to txg at given time interval\n'
-        out += '...\n'
+        out += 'atime/s     - Average time (in ns) that transactions waited until enter into the new txg'
         return out
 
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._kstat.copy()
+        all_tx = 0
+        tx_time = 0
         for i in range(self.MAX_TIME):
             units = 'ns' if pool_kstat_supported() else 'us'
-            t = '{0} {1}'.format(pow(2, i), units)
+            spent_time = pow(2, i)
+            t = '{0} {1}'.format(spent_time, units)
             raw[t] = self._kstat.get(t, 0) / delta
-            if raw[t] != 0:
-                self.TX_ASSIGN_FORMAT += ('{' + t + ':>15}')
+            all_tx += raw[t]
+            tx_time += (spent_time * raw[t])
+
+        try:
+            raw['atime'] = float(tx_time) / float(all_tx)
+        except ZeroDivisionError:
+            raw['atime'] = 0
         return raw
 
     def headers(self):
-        pass
+        header = '\n'
+        header += TX_ASSIGN_FORMAT.format(**METRIC_NAMES)
+        return header
 
     def data(self):
         raw = self.compute()
-        header = self.TX_ASSIGN_FORMAT.format(**METRIC_NAMES)
-        if header:
-            header += '\n'
-        return header + self.TX_ASSIGN_FORMAT.format(**raw)
+        return TX_ASSIGN_FORMAT.format(**raw)
 
 
 class txgs(kstat):
@@ -439,8 +439,8 @@ class io(kstat):
     def compute(self):
         delta = self._snaptime / NANOSEC
         raw = self._kstat.copy()
-        raw['nreads'] = self._kstat['nread'] / delta
-        raw['nwrittens'] = self._kstat['nwritten'] / delta
+        raw['nreads'] = Integer(self._kstat['nread'] / delta)
+        raw['nwrittens'] = Integer(self._kstat['nwritten'] / delta)
         raw['readss'] = self._kstat['reads'] / delta
         raw['writess'] = self._kstat['writes'] / delta
         # Accumulated time and queue length statistics.
@@ -468,12 +468,12 @@ class io(kstat):
         getcontext().prec = 3
         try:
             raw['awaitq'] = Decimal(self._kstat['wlentime']) / Decimal(self._kstat['wtime'])
-        except InvalidOperation:
+        except (InvalidOperation, DivisionByZero):
             raw['awaitq'] = 0
         raw['waitpct'] = Decimal(self._kstat['wtime']) * 100 / Decimal(self._snaptime)
         try:
             raw['arunq'] = Decimal(self._kstat['rlentime']) / Decimal(self._kstat['rtime'])
-        except InvalidOperation:
+        except (InvalidOperation, DivisionByZero):
             raw['arunq'] = 0
         raw['runpct'] = Decimal(self._kstat['rtime']) * 100 / Decimal(self._snaptime)
         return raw
@@ -630,24 +630,24 @@ class extendarc(arcstats):
         delta = self._snaptime / NANOSEC
         raw = self._arcstats.copy()
         raw['anons'] = self._arcstats['anon_size']
-        raw['adevc'] = self._arcstats['anon_evict_data']
-        raw['amevc'] = self._arcstats['anon_evict_metadata']
+        raw['adevc'] = Integer(self._arcstats['anon_evict_data'])
+        raw['amevc'] = Integer(self._arcstats['anon_evict_metadata'])
         raw['mrus'] = self._arcstats['mru_size']
         raw['mruh'] = self._arcstats['mru_hits'] / delta
-        raw['mrudevc'] = self._arcstats['mru_evict_data']
-        raw['mrumevc'] = self._arcstats['mru_evict_metadata']
+        raw['mrudevc'] = Integer(self._arcstats['mru_evict_data'])
+        raw['mrumevc'] = Integer(self._arcstats['mru_evict_metadata'])
         raw['mfus'] = self._arcstats['mfu_size']
         raw['mfuh'] = self._arcstats['mfu_hits'] / delta
-        raw['mfudevc'] = self._arcstats['mfu_evict_data']
-        raw['mfumevc'] = self._arcstats['mfu_evict_metadata']
+        raw['mfudevc'] = Integer(self._arcstats['mfu_evict_data'])
+        raw['mfumevc'] = Integer(self._arcstats['mfu_evict_metadata'])
         raw['gmrus'] = self._arcstats['mru_ghost_size']
         raw['gmruh'] = self._arcstats['mru_ghost_hits'] / delta
-        raw['gmrudevc'] = self._arcstats['mru_ghost_evict_data']
-        raw['gmrumevc'] = self._arcstats['mru_ghost_evict_metadata']
+        raw['gmrudevc'] = Integer(self._arcstats['mru_ghost_evict_data'])
+        raw['gmrumevc'] = Integer(self._arcstats['mru_ghost_evict_metadata'])
         raw['gmfus'] = self._arcstats['mfu_ghost_size']
         raw['gmfuh'] = self._arcstats['mfu_ghost_hits'] / delta
-        raw['gmfudevc'] = self._arcstats['mfu_ghost_evict_data']
-        raw['gmfumevc'] = self._arcstats['mfu_ghost_evict_metadata']
+        raw['gmfudevc'] = Integer(self._arcstats['mfu_ghost_evict_data'])
+        raw['gmfumevc'] = Integer(self._arcstats['mfu_ghost_evict_metadata'])
         return raw
 
     def headers(self):
@@ -682,8 +682,8 @@ class l2arc(arcstats):
         raw['l2hdrsize'] = self._arcstats['l2_hdr_size']
         raw['l2hps'] = self._arcstats['l2_hits'] / delta
         raw['l2mps'] = self._arcstats['l2_misses'] / delta
-        raw['l2read'] = self._arcstats['l2_read_bytes'] / delta
-        raw['l2write'] = self._arcstats['l2_write_bytes'] / delta
+        raw['l2read'] = Integer(self._arcstats['l2_read_bytes'] / delta)
+        raw['l2write'] = Integer(self._arcstats['l2_write_bytes'] / delta)
         return raw
 
     def headers(self):
@@ -813,13 +813,11 @@ def cycle(stats, interval, count, verbose, debug, timestamp, **kwargs):
         if count:
             time.sleep(interval)
 
-def raw_history(stats, interval, verbose, debug, timestamp, **kwargs):
+def raw_history(stats, interval, verbose, timestamp, **kwargs):
     if verbose:
         print stats.acronym()
     time.sleep(5)
     cur = stats(**kwargs)
-    if debug:
-        print cur
     print cur
     while True:
         cur = stats(**kwargs)
@@ -863,7 +861,7 @@ def execute(args):
         elif args.tx_assign:
             cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.txgs:
-            raw_history(txgs, args.interval, args.verbose, args.debug, args.time, pool=args.pool)
+            raw_history(txgs, args.interval, args.verbose, args.time, pool=args.pool)
         elif args.read:
             if pool_kstat_supported():
                 pass
