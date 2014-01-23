@@ -1,6 +1,7 @@
 #!/usr/bin/python
 #
-# Copyright 2012 Cyril Plisko. All rights reserved.
+# Copyright 2014 Cyril Plisko. All rights reserved.
+# Copyright 2014 Igor Lvovsky. All rights reserved.
 # Use is subject to license terms.
 #
 
@@ -15,7 +16,7 @@ from decimal import Decimal, getcontext, InvalidOperation, DivisionByZero
 from datetime import datetime
 from glob import glob
 
-VERSION = '3'
+VERSION = '4'
 
 KSTATBASE = '/proc/spl/kstat'
 
@@ -858,7 +859,7 @@ def execute(args):
             if pool_kstat_supported():
                 cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
             else:
-                print "--io option supported for zfs >= 0.6.2.19 only"
+                print "--io option supported for zfs >= 0.6.3 only"
         elif args.tx_assign:
             cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
         elif args.txgs:
@@ -867,7 +868,7 @@ def execute(args):
             if pool_kstat_supported():
                 pass
             else:
-                print "--read option supported for zfs >= 0.6.2.19 only"
+                print "--read option supported for zfs >= 0.6.3 only"
     # elif args.debug:
     #     print arcstats()
     #     as1 = arcstats()
