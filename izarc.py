@@ -6,7 +6,7 @@
 
 import sys
 import argparse
-import os.path
+import os
 import time
 import pprint as pp
 import subprocess as sp
@@ -16,6 +16,8 @@ from datetime import datetime
 from glob import glob
 
 VERSION = '3'
+
+KSTATBASE = '/proc/spl/kstat'
 
 NANOSEC = 1000000000
 MODPARAMPREF = '/sys/module/zfs/parameters'
@@ -160,14 +162,14 @@ def zfsversion():
     # [0, 6, 2, 19]
     return ver
 
-# Minimal version supportd pool's kstat is zfs-0.6.2.19
 def pool_kstat_supported():
-    ver = zfsversion()
-    if ver[2] < 3:
-        try:
-            if ver[3] < 19:
-                return False
-        except IndexError:
+    all_kstats = glob(os.path.join(KSTATBASE, 'zfs', '*'))
+    # For old zfs implementations under /proc/spl/kstat/zfs exists dmu_tx_assign-<poolname>
+    # In new implementations dmu_tx_assign-<poolname> renamed as dmu_tx_assign
+    # and moved under /proc/spl/kstat/zfs/<poolname>/dmu_tx_assign
+    for item in all_kstats:
+        item = os.path.basename(item)
+        if item.startswith('dmu_tx_assign'):
             return False
     return True
 
@@ -235,7 +237,6 @@ class Integer(long):
 
 
 class kstat(object):
-    KSTATBASE = '/proc/spl/kstat'
     # kstat types
     KSTAT_TYPE_RAW = 0
     KSTAT_TYPE_NAMED = 1
@@ -252,7 +253,7 @@ class kstat(object):
         self._kstat = dict()
         self._raw_data = ''
         if module and name:
-            self._file = os.path.join(self.KSTATBASE, module, name)
+            self._file = os.path.join(KSTATBASE, module, name)
             self._init_kstat()
         else:
             self._file = ''
