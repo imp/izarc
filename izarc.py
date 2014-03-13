@@ -253,6 +253,7 @@ class kstat(object):
     def __init__(self, module=None, name=None):
         self._kstat = dict()
         self._raw_data = ''
+        self._snaptime = 0
         if module and name:
             self._file = os.path.join(KSTATBASE, module, name)
             self._init_kstat()
@@ -261,6 +262,9 @@ class kstat(object):
 
     def _init_kstat(self):
         lines = open(self._file).readlines()
+        if not lines:
+            raise Exception("No available data...")
+
         try:
             # Parse common kstat data
             (self._kid, self._type, self._flags, self._ndata, self._data_size,
@@ -315,7 +319,7 @@ class kstat(object):
 
     def __sub__(self, other):
         if not isinstance(other, kstat):
-            return NotImplemented
+            return NotImplementedError
         diff = deepcopy(self)
         diff._snaptime = self._snaptime - other._snaptime
         for item in self._kstat:
@@ -354,7 +358,7 @@ class tx_assign(kstat):
             units = 'ns' if pool_kstat_supported() else 'us'
             spent_time = pow(2, i)
             t = '{0} {1}'.format(spent_time, units)
-            raw[t] = self._kstat.get(t, 0) / delta
+            raw[t] = (self._kstat.get(t, 0) / delta) if delta else 0
             all_tx += raw[t]
             tx_time += (spent_time * raw[t])
 
@@ -387,7 +391,7 @@ class txgs(kstat):
         out = '\n----- TXGS Acronym -----\n'
         out += 'txg           - Transaction group id\n'
         out += 'birth         - Transaction group birth timestamp in ns\n'
-        out += 'state         - Transaction group state (Open/Quiescing/Syncing)\n'
+        out += 'state         - Transaction group state (Open/Quiescing/Waiting/Syncing)\n'
         out += 'nread         - Number of bytes read\n'
         out += 'nwritten      - Number of bytes written\n'
         out += 'reads         - Number of read operations\n'
@@ -560,7 +564,7 @@ class arcstats(kstat):
 
     def __sub__(self, other):
         if not isinstance(other, arcstats):
-            return NotImplemented
+            return NotImplementedError
         diff = deepcopy(self)
         diff._snaptime = self._snaptime - other._snaptime
         for item in self._arcstats:
