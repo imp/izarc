@@ -858,7 +858,8 @@ def execute(args):
         if pool_kstat_supported():
             set_zfsparams(dict(zfs_read_history='100',
                                zfs_read_history_hits='1',
-                               zfs_txg_history='100'))
+                               zfs_txg_history='100',
+                               zfs_io_stat_enable='1'))
         if args.io:
             if pool_kstat_supported():
                 cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
@@ -932,10 +933,11 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         pass
-
-    destroy_pid()
-    pids = glob(os.path.join(IZARCDIR, '*'))
-    if pool_kstat_supported() and not pids:
-        set_zfsparams(dict(zfs_read_history='0',
-                           zfs_read_history_hits='0',
-                           zfs_txg_history='0'))
+    finally:
+        destroy_pid()
+        pids = glob(os.path.join(IZARCDIR, '*'))
+        if pool_kstat_supported() and not pids:
+            set_zfsparams(dict(zfs_read_history='0',
+                               zfs_read_history_hits='0',
+                               zfs_txg_history='0',
+                               zfs_io_stat_enable='0'))
