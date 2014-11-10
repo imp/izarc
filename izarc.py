@@ -16,7 +16,7 @@ from decimal import Decimal, getcontext, InvalidOperation, DivisionByZero
 from datetime import datetime
 from glob import glob
 
-VERSION = '4'
+VERSION = '5'
 
 KSTATBASE = '/proc/spl/kstat'
 
