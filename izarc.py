@@ -174,6 +174,19 @@ def pool_kstat_supported():
             return False
     return True
 
+def is_single_pool():
+    pools = []
+    if pool_kstat_supported():
+        all_kstats = glob(os.path.join(KSTATBASE, 'zfs', '*'))
+        for item in all_kstats:
+            # In new-style zfs kstat has directory per pool for pool related stats
+            if os.path.isdir(item):
+                pools.append(os.path.basename(item))
+        return True, pools
+    else:
+        # Always False for old-style zfs
+        return False, pools
+
 TXGS_GEN = '{txg:>8}{birth:>20}{state:>8}' if pool_kstat_supported() else '{txg:>8}{state:>8}{birth:>20}'
 TXGS_RESRV = '{nreserved:>10}' if pool_kstat_supported() else ''
 TXGS_OPS = TXGS_RESRV + '{nread:>10}{nwritten:>12}{reads:>10}{writes:>10}'
@@ -854,26 +867,46 @@ def execute(args):
         cycle(extendarc, args.interval, args.count, args.verbose, args.debug, args.time)
     elif args.prefetch:
         cycle(prefetch, args.interval, args.count, args.verbose, args.debug, args.time)
-    elif args.pool:
+    elif args.io:
+        if not args.pool:
+            sys.stderr.write("Unknown pool\n")
+            sys.exit(1)
+
         if pool_kstat_supported():
             set_zfsparams(dict(zfs_read_history='100',
-                               zfs_read_history_hits='1',
-                               zfs_txg_history='100',
-                               zfs_io_stat_enable='1'))
-        if args.io:
-            if pool_kstat_supported():
-                cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
-            else:
-                print "--io option supported for zfs >= 0.6.3 only"
-        elif args.tx_assign:
+                   zfs_read_history_hits='1',
+                   zfs_txg_history='100',
+                   zfs_io_stat_enable='1'))
+            cycle(io, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
+        else:
+            print "--io option supported for zfs >= 0.6.3 only"
+    elif args.tx_assign:
+        if not args.pool:
+            sys.stderr.write("Unknown pool\n")
+            sys.exit(1)
+
+        if pool_kstat_supported():
+            set_zfsparams(dict(zfs_read_history='100',
+                   zfs_read_history_hits='1',
+                   zfs_txg_history='100',
+                   zfs_io_stat_enable='1'))
             cycle(tx_assign, args.interval, args.count, args.verbose, args.debug, args.time, pool=args.pool)
-        elif args.txgs:
+    elif args.txgs:
+        if not args.pool:
+            sys.stderr.write("Unknown pool\n")
+            sys.exit(1)
+
+        if pool_kstat_supported():
+            set_zfsparams(dict(zfs_read_history='100',
+                   zfs_read_history_hits='1',
+                   zfs_txg_history='100',
+                   zfs_io_stat_enable='1'))
             raw_history(txgs, args.interval, args.verbose, args.time, pool=args.pool)
-        elif args.read:
-            if pool_kstat_supported():
-                pass
-            else:
-                print "--read option supported for zfs >= 0.6.3 only"
+    # elif args.read:
+    #     if pool_kstat_supported():
+    #         pass
+    #     else:
+    #         print "--read option supported for zfs >= 0.6.3 only"
     # elif args.debug:
     #     print arcstats()
     #     as1 = arcstats()
@@ -925,6 +958,9 @@ def main():
         help='number of probes to run', type=int, nargs='?', default=0)
 
     args = parser.parse_args()
+    single, pools = is_single_pool()
+    if not args.pool and single:
+        args.pool = pools[0]
     create_pid()
     execute(args)
 
